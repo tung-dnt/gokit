@@ -38,14 +38,25 @@ Steps: <N> implementation steps
 
 ### Step 2 — RED phase (failing tests)
 
-Invoke the `tdd-guide` agent to write the failing tests.
+Run two skills in sequence:
 
-Provide the agent with:
+**2a. Invoke `fullstack-dev-skills:test-master`**
+
+Use the Skill tool to invoke `fullstack-dev-skills:test-master`. Provide it:
+- Language: Go (stdlib `testing` only — no testify, no mocks)
+- Task goal and domain operations to be tested
+- Project constraints: in-memory SQLite, Echo v5 httptest, table-driven tests
+
+Let test-master apply its full skill set — unit testing, integration, TDD iron laws, anti-patterns, QA methodology, automation frameworks, security testing, and reporting. Use its output to build a complete test plan (mandatory cases, edge cases, error paths, anti-patterns to avoid) before writing a single line of test code.
+
+**2b. Invoke the `tdd-guide` agent**
+
+Invoke the `tdd-guide` agent with:
 - The domain name
-- The specific operations this task covers (from the implementation steps)
-- The test cases specified in the feature-planner plan (if referenced in the task)
+- The specific operations this task covers
+- The test plan produced by test-master in 2a
 
-The tdd-guide agent will write:
+The tdd-guide agent writes using project-specific patterns (in-memory SQLite, Echo httptest, table-driven):
 - `biz/<domain>/service_test.go` — table-driven tests for service methods
 - `biz/<domain>/controller_test.go` — HTTP handler tests via Echo + httptest
 - `biz/<domain>/dto/dto_test.go` — validator tag tests (if DTOs are new)

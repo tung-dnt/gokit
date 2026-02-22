@@ -5,6 +5,17 @@ description: Generate Go unit and integration tests for a domain's handlers, ser
 
 Generate idiomatic Go tests for files within `biz/<domain>/`. Uses stdlib + Echo test utilities only. No external test libraries (no testify, etc.).
 
+## Step 0 — Invoke test-master first
+
+Before writing any test code, use the Skill tool to invoke `fullstack-dev-skills:test-master`. Provide it:
+- Language: Go (stdlib `testing` only — no testify, no mocks)
+- The source file(s) being tested and what they do
+- Project constraints: in-memory SQLite, Echo v5 httptest, table-driven tests, no external test libraries
+
+Let test-master apply its full skill set — unit testing strategy, integration testing, TDD iron laws, testing anti-patterns, QA methodology, automation frameworks, security testing, and test reporting. Use its complete output to build a test plan before writing code. The project-specific patterns below then govern the exact implementation.
+
+---
+
 ## Rules
 
 - Tests live in the **same package** as the code under test (e.g., `package user`) to access unexported types.
