@@ -49,7 +49,8 @@ func main() {
 	registerRouters(e.Group("/api"), db)
 	e.GET("/swagger/*", echoSwagger.WrapHandler)
 
-	if err := e.Start(config.Load(os.Getenv).Server.Port); err != nil {
+	cfg := config.Load(os.Getenv).Server
+	if err := e.Start(cfg.Host + ":" + cfg.Port); err != nil {
 		e.Logger.Error("failed to start server", "error", err)
 	}
 }
