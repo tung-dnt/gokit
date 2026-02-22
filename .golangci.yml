@@ -1,0 +1,85 @@
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  exclude-rules:
+    - path: '_test\.go'
+      linters: [bodyclose, errcheck, noctx, wrapcheck]
+
+linters:
+  disable-all: true
+  enable:
+    # Correctness
+    - errcheck
+    - govet
+    - staticcheck
+    - nilerr
+    - bodyclose
+    - rowserrcheck
+    - sqlclosecheck
+    # Context
+    - noctx
+    - contextcheck
+    # Style / Quality
+    - revive
+    - gocritic
+    - misspell
+    - whitespace
+    - godot
+    # Dead code
+    - ineffassign
+    - unused
+    - unparam
+    # Safety
+    - gosec
+    - gochecknoglobals
+    # Complexity
+    - cyclop
+    - gocognit
+    # Completeness
+    - exhaustive
+    - nolintlint
+    # Performance
+    - perfsprint
+    - intrange
+
+  settings:
+    errcheck:
+      check-type-assertions: true
+      check-blank: true
+    govet:
+      enable-all: true
+      disable: [fieldalignment]
+      settings:
+        shadow:
+          strict: true
+    staticcheck:
+      checks: ["all", "-ST1000", "-ST1003"]
+    revive:
+      rules:
+        - name: exported
+          arguments: ["checkPrivateReceivers", "sayRepetitiveInsteadOfStutters"]
+        - name: error-strings
+        - name: context-as-argument
+        - name: errorf
+        - name: if-return
+        - name: receiver-naming
+        - name: var-naming
+    cyclop:
+      max-complexity: 15
+      package-average: 10.0
+    gocognit:
+      min-complexity: 15
+    exhaustive:
+      check: [switch, map]
+      default-signifies-exhaustive: false
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+    gosec:
+      excludes: [G115] # integer overflow — too noisy for small projects

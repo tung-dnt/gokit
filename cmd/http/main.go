@@ -9,6 +9,9 @@ import (
 
 	"github.com/labstack/echo/v5"
 	"github.com/labstack/echo/v5/middleware"
+	echoSwagger "github.com/swaggo/echo-swagger"
+
+	_ "restful-boilerplate/dx/docs"
 
 	"restful-boilerplate/biz/user"
 	"restful-boilerplate/pkg/config"
@@ -20,6 +23,12 @@ func registerRouters(g *echo.Group, db *sql.DB) {
 	// add new domains: xxx.NewController(db).RegisterRoutes(g.Group("/xxx"))
 }
 
+//	@title          Restful Boilerplate API
+//	@version        1.0
+//	@description    Go RESTful API boilerplate built on Echo v5 + SQLite.
+//	@host           localhost:8080
+//	@BasePath       /api
+//	@schemes        http
 func main() {
 	db, err := sql.Open("sqlite", "./data.db")
 	if err != nil {
@@ -38,6 +47,7 @@ func main() {
 	e.Use(middleware.CSRF())
 
 	registerRouters(e.Group("/api"), db)
+	e.GET("/swagger/*", echoSwagger.WrapHandler)
 
 	if err := e.Start(config.Load(os.Getenv).Server.Port); err != nil {
 		e.Logger.Error("failed to start server", "error", err)
