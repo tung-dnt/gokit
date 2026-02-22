@@ -5,6 +5,7 @@ import (
 	"database/sql"
 
 	"github.com/labstack/echo/v5"
+	"go.opentelemetry.io/otel"
 	sqlitedb "restful-boilerplate/repo/sqlite/db"
 )
 
@@ -14,7 +15,10 @@ type Controller struct {
 }
 
 func NewController(db *sql.DB) *Controller {
-	return &Controller{svc: &userService{q: sqlitedb.New(db)}}
+	return &Controller{svc: &userService{
+		q:      sqlitedb.New(db),
+		tracer: otel.Tracer("user"),
+	}}
 }
 
 func (ctrl *Controller) RegisterRoutes(g *echo.Group) {

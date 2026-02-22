@@ -6,6 +6,33 @@ services:
     ports: ["9090:9090"]
     networks: [observability]
 
+  tempo:
+    image: grafana/tempo:2.5.0
+    command: ["-config.file=/etc/tempo.yaml"]
+    volumes:
+      - ./tempo/tempo.yaml:/etc/tempo.yaml:ro
+      - tempo-data:/var/tempo
+    ports:
+      - "4318:4318"   # OTLP HTTP — exposed so the Go app (on host) can send traces
+    networks: [observability]
+
+  loki:
+    image: grafana/loki:3.1.0
+    command: ["-config.file=/etc/loki/loki.yaml"]
+    volumes:
+      - ./loki/loki.yaml:/etc/loki/loki.yaml:ro
+      - loki-data:/loki
+    networks: [observability]
+
+  alloy:
+    image: grafana/alloy:v1.4.0
+    command: ["run", "--server.http.listen-addr=0.0.0.0:12345", "/etc/alloy/config.alloy"]
+    volumes:
+      - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - ../../logs:/var/log/app:ro
+    networks: [observability]
+    depends_on: [loki]
+
   grafana:
     image: grafana/grafana:10.4.2
     ports: ["3000:3000"]
@@ -17,7 +44,7 @@ services:
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
       - grafana-data:/var/lib/grafana
     networks: [observability]
-    depends_on: [prometheus]
+    depends_on: [prometheus, tempo, loki]
 
 networks:
   observability:
@@ -25,3 +52,5 @@ networks:
 
 volumes:
   grafana-data:
+  tempo-data:
+  loki-data:
