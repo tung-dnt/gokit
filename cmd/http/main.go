@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 	"time"
 
 	"restful-boilerplate/biz/user"
@@ -62,10 +63,17 @@ func main() {
 	e.Use(echomw.ContextTimeout(5 * time.Second))
 	e.Use(echomw.GzipWithConfig(echomw.GzipConfig{Level: 5}))
 	e.Use(echomw.Secure())
-	e.Use(echomw.CSRF())
+	e.Use(echomw.CSRFWithConfig(echomw.CSRFConfig{
+		Skipper: func(c *echo.Context) bool {
+			return strings.HasPrefix((*c).Request().URL.Path, "/swagger")
+		},
+	}))
 
 	registerRouters(e.Group("/api"), db)
 	e.GET("/swagger/*", echoSwagger.WrapHandler)
+	e.GET("/swagger", func(c *echo.Context) error {
+		return (*c).Redirect(301, "/swagger/index.html")
+	})
 
 	cfg := config.Load(os.Getenv).Server
 	if err := e.Start(cfg.Host + ":" + cfg.Port); err != nil {
