@@ -15,6 +15,7 @@ import (
 
 	"restful-boilerplate/biz/user"
 	"restful-boilerplate/pkg/config"
+	"restful-boilerplate/pkg/metrics"
 	cv "restful-boilerplate/pkg/validator"
 )
 
@@ -38,6 +39,7 @@ func main() {
 
 	e := echo.New()
 	e.Validator = cv.New()
+	metrics.Register(e)
 
 	e.Use(middleware.RequestLogger())
 	e.Use(middleware.Recover())
