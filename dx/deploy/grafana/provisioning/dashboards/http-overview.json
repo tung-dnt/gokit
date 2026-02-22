@@ -1,46 +1,86 @@
 {
-  "title": "HTTP Overview",
-  "uid": "http-overview",
+  "title": "Go HTTP Service — Full Observability",
+  "uid": "go-http-full",
   "schemaVersion": 38,
-  "version": 1,
+  "version": 3,
   "refresh": "10s",
-  "time": { "from": "now-1h", "to": "now" },
+  "time": { "from": "now-30m", "to": "now" },
+  "timepicker": {},
   "templating": { "list": [] },
+  "annotations": { "list": [] },
   "panels": [
     {
       "id": 1,
-      "title": "Total Requests (last 5m)",
+      "title": "P90 Latency",
+      "description": "90th-percentile end-to-end request duration.",
       "type": "stat",
-      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.1 },
+              { "color": "red", "value": 0.5 }
+            ]
+          }
+        }
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "area" },
       "targets": [
         {
-          "expr": "sum(increase(echo_requests_total[5m]))",
-          "legendFormat": "Requests",
+          "expr": "histogram_quantile(0.90, sum(rate(echo_request_duration_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p90",
           "refId": "A"
         }
       ]
     },
     {
       "id": 2,
-      "title": "5xx Error Rate %",
+      "title": "Requests / sec",
+      "description": "Current request throughput across all routes.",
       "type": "stat",
-      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
-      "options": {
-        "reduceOptions": { "calcs": ["lastNotNull"] },
-        "colorMode": "background",
-        "thresholds": {
-          "mode": "absolute",
-          "steps": [
-            { "color": "green", "value": null },
-            { "color": "yellow", "value": 1 },
-            { "color": "red", "value": 5 }
-          ]
+      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "blue", "value": null }]
+          }
         }
       },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
+      "targets": [
+        {
+          "expr": "sum(rate(echo_requests_total[1m]))",
+          "legendFormat": "RPS",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "5xx Error Rate",
+      "description": "Percentage of requests that returned a 5xx status code.",
+      "type": "stat",
+      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 4 },
       "fieldConfig": {
-        "defaults": { "unit": "percent" }
+        "defaults": {
+          "unit": "percent",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.1 },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        }
       },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
       "targets": [
         {
           "expr": "100 * sum(rate(echo_requests_total{code=~\"5..\"}[5m])) / sum(rate(echo_requests_total[5m]))",
@@ -50,71 +90,307 @@
       ]
     },
     {
-      "id": 3,
-      "title": "P99 Latency",
-      "type": "stat",
-      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" },
-      "fieldConfig": { "defaults": { "unit": "s" } },
-      "targets": [
-        {
-          "expr": "histogram_quantile(0.99, sum(rate(echo_request_duration_seconds_bucket[5m])) by (le))",
-          "legendFormat": "P99",
-          "refId": "A"
-        }
-      ]
-    },
-    {
       "id": 4,
-      "title": "Request Rate by Status Code",
-      "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
-      "fieldConfig": { "defaults": { "unit": "reqps" } },
-      "options": { "tooltip": { "mode": "multi" } },
+      "title": "Availability",
+      "description": "Percentage of requests that returned a non-5xx response over the last 5 minutes.",
+      "type": "stat",
+      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 4 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 99 },
+              { "color": "green", "value": 99.9 }
+            ]
+          }
+        }
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
       "targets": [
         {
-          "expr": "sum(rate(echo_requests_total[1m])) by (code)",
-          "legendFormat": "{{code}}",
+          "expr": "100 * (1 - (sum(rate(echo_requests_total{code=~\"5..\"}[5m])) / sum(rate(echo_requests_total[5m]))))",
+          "legendFormat": "availability %",
           "refId": "A"
         }
       ]
     },
     {
       "id": 5,
-      "title": "Latency Percentiles (P50 / P95 / P99)",
+      "title": "Client Request Latency",
+      "description": "End-to-end request duration percentiles (p50 / p90 / p99).",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "gridPos": { "x": 0, "y": 4, "w": 12, "h": 8 },
       "fieldConfig": { "defaults": { "unit": "s" } },
-      "options": { "tooltip": { "mode": "multi" } },
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] } },
       "targets": [
         {
           "expr": "histogram_quantile(0.50, sum(rate(echo_request_duration_seconds_bucket[1m])) by (le))",
-          "legendFormat": "P50",
+          "legendFormat": "p50",
           "refId": "A"
         },
         {
-          "expr": "histogram_quantile(0.95, sum(rate(echo_request_duration_seconds_bucket[1m])) by (le))",
-          "legendFormat": "P95",
+          "expr": "histogram_quantile(0.90, sum(rate(echo_request_duration_seconds_bucket[1m])) by (le))",
+          "legendFormat": "p90",
           "refId": "B"
         },
         {
           "expr": "histogram_quantile(0.99, sum(rate(echo_request_duration_seconds_bucket[1m])) by (le))",
-          "legendFormat": "P99",
+          "legendFormat": "p99",
           "refId": "C"
         }
       ]
     },
     {
       "id": 6,
-      "title": "Request Rate by Route",
+      "title": "Requests Per Second (RPS)",
+      "description": "Request throughput by route (method + URL).",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 12 },
+      "gridPos": { "x": 12, "y": 4, "w": 12, "h": 8 },
       "fieldConfig": { "defaults": { "unit": "reqps" } },
-      "options": { "tooltip": { "mode": "multi" } },
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] } },
       "targets": [
         {
           "expr": "sum(rate(echo_requests_total[1m])) by (method, url)",
           "legendFormat": "{{method}} {{url}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "title": "Availability",
+      "description": "Percentage of requests that returned a non-5xx response over time. SLO target is typically 99.9%.",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 12, "w": 12, "h": 8 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 99 },
+              { "color": "green", "value": 99.9 }
+            ]
+          }
+        }
+      },
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "expr": "100 * (1 - (sum(rate(echo_requests_total{code=~\"5..\"}[5m])) / sum(rate(echo_requests_total[5m]))))",
+          "legendFormat": "Availability %",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "title": "Error Rate by Status Code",
+      "description": "Request rate broken down by HTTP status code. Helps distinguish 4xx (client errors) from 5xx (server errors).",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 12, "w": 12, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "reqps" } },
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "expr": "sum(rate(echo_requests_total[1m])) by (code)",
+          "legendFormat": "HTTP {{code}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "CPU Usage",
+      "description": "Process CPU utilisation as a percentage of one logical core. Values > 100% indicate multi-core saturation. The GC CPU series shows how much of that total is spent on garbage collection.",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 20, "w": 12, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "percent" } },
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "expr": "rate(process_cpu_seconds_total[1m]) * 100",
+          "legendFormat": "process CPU %",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(go_cpu_classes_gc_total_cpu_seconds_total[1m]) * 100",
+          "legendFormat": "GC CPU %",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Memory Usage",
+      "description": "RSS (resident set size) from the OS and live heap objects from the Go runtime. Heap objects bytes is the GC-managed memory; RSS includes goroutine stacks and other off-heap allocations.",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 20, "w": 12, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "bytes" } },
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "expr": "process_resident_memory_bytes",
+          "legendFormat": "RSS (physical)",
+          "refId": "A"
+        },
+        {
+          "expr": "go_memory_classes_heap_objects_bytes",
+          "legendFormat": "Heap objects",
+          "refId": "B"
+        },
+        {
+          "expr": "go_memory_classes_heap_stacks_bytes",
+          "legendFormat": "Goroutine stacks",
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "title": "Goroutine Count (Leak Detector)",
+      "description": "Live goroutine count over time. A monotonically increasing trend that does NOT track RPS is the primary indicator of a goroutine leak — goroutines created but never exiting because they are blocked on a channel receive, an unclosed context, or a deadlocked mutex.",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 28, "w": 12, "h": 8 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 500 },
+              { "color": "red", "value": 2000 }
+            ]
+          }
+        }
+      },
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "max"] } },
+      "targets": [
+        {
+          "expr": "go_sched_goroutines_goroutines",
+          "legendFormat": "goroutines",
+          "refId": "A"
+        },
+        {
+          "expr": "go_sched_gomaxprocs_threads",
+          "legendFormat": "OS threads",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "title": "Goroutine Scheduling Latency (Channel-Block Proxy)",
+      "description": "Time from when a goroutine becomes runnable to when it actually runs. This is the best production-safe proxy for channel-block time: when a goroutine unblocks from a channel receive/send, it first enters the scheduler run queue — high p99 here means goroutines are queueing up after unblocking, which reveals channel saturation or an overloaded goroutine pool. Enabling SetBlockProfileRate(1) would give exact per-operation block time but adds ~5-15 % CPU overhead.",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 28, "w": 12, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(go_sched_latencies_seconds_bucket[1m])) by (le))",
+          "legendFormat": "p50",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(go_sched_latencies_seconds_bucket[1m])) by (le))",
+          "legendFormat": "p95",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(go_sched_latencies_seconds_bucket[1m])) by (le))",
+          "legendFormat": "p99",
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "title": "GC Pause Duration",
+      "description": "Stop-the-world pause durations per GC cycle. High p99 pauses directly add tail latency to in-flight requests. Target: p99 < 1 ms. Sustained high GC pauses often co-occur with high allocation rates (see the Heap Allocation Rate panel).",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 36, "w": 12, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "max"] } },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(go_gc_pauses_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p50",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(go_gc_pauses_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p99",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "title": "Heap Allocation Rate",
+      "description": "Rate of bytes allocated on the heap per second. High allocation rate drives GC frequency and pause duration. Spikes that correlate with increased RPS are normal; spikes without RPS increases suggest an allocation-heavy code path or an unbounded cache/buffer.",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 36, "w": 12, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "Bps" } },
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "expr": "rate(go_gc_heap_allocs_bytes_total[1m])",
+          "legendFormat": "alloc rate",
+          "refId": "A"
+        },
+        {
+          "expr": "go_gc_heap_live_bytes",
+          "legendFormat": "live heap",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "title": "GC CPU Cost",
+      "description": "Fraction of total CPU time spent by the garbage collector. Sustained GC CPU > 25 % of total CPU indicates the app is memory-allocation-bound. This is the Go-native equivalent of container CPU throttling — it shows self-imposed overhead from GC work rather than kernel-level quota enforcement.",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 44, "w": 12, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "percent" } },
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "expr": "rate(go_cpu_classes_gc_total_cpu_seconds_total[1m]) * 100",
+          "legendFormat": "GC CPU %",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(go_cpu_classes_user_cpu_seconds_total[1m]) * 100",
+          "legendFormat": "user CPU %",
+          "refId": "B"
+        },
+        {
+          "expr": "rate(go_cpu_classes_idle_cpu_seconds_total[1m]) * 100",
+          "legendFormat": "idle CPU %",
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "title": "Mutex Contention Rate",
+      "description": "Rate of CPU-seconds goroutines spent blocked on sync.Mutex / sync.RWMutex. Rising values without a matching RPS increase means lock contention is growing — a common root cause of goroutine pile-up and the scheduling latency spikes visible in the panel above.",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 44, "w": 12, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "expr": "rate(go_sync_mutex_wait_total_seconds_total[1m])",
+          "legendFormat": "mutex wait (s/s)",
           "refId": "A"
         }
       ]
