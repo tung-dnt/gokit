@@ -1,0 +1,45 @@
+package main
+
+import (
+	"database/sql"
+	"os"
+	"time"
+
+	_ "modernc.org/sqlite"
+
+	"github.com/labstack/echo/v5"
+	"github.com/labstack/echo/v5/middleware"
+
+	"restful-boilerplate/biz/user"
+	"restful-boilerplate/pkg/config"
+	cv "restful-boilerplate/pkg/validator"
+)
+
+func registerRouters(g *echo.Group, db *sql.DB) {
+	user.NewController(db).RegisterRoutes(g.Group("/users"))
+	// add new domains: xxx.NewController(db).RegisterRoutes(g.Group("/xxx"))
+}
+
+func main() {
+	db, err := sql.Open("sqlite", "./data.db")
+	if err != nil {
+		panic("open db: " + err.Error())
+	}
+	defer db.Close()
+
+	e := echo.New()
+	e.Validator = cv.New()
+
+	e.Use(middleware.RequestLogger())
+	e.Use(middleware.Recover())
+	e.Use(middleware.ContextTimeout(5 * time.Second))
+	e.Use(middleware.GzipWithConfig(middleware.GzipConfig{Level: 5}))
+	e.Use(middleware.Secure())
+	e.Use(middleware.CSRF())
+
+	registerRouters(e.Group("/api"), db)
+
+	if err := e.Start(config.Load(os.Getenv).Server.Port); err != nil {
+		e.Logger.Error("failed to start server", "error", err)
+	}
+}
