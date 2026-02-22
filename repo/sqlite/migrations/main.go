@@ -18,7 +18,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("open db: %v", err)
 	}
-	defer db.Close()
+	defer db.Close() //nolint:errcheck // best-effort close on exit
 
 	if err := sqlitedb.Migrate(db); err != nil {
 		log.Fatalf("apply schema: %v", err)

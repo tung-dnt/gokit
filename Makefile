@@ -99,6 +99,16 @@ sqlc: ## Regenerate sqlc Go code from SQL queries
 swagger: ## Regenerate OpenAPI/Swagger docs
 	go tool swag init -g cmd/http/main.go -o dx/docs/
 
+# ─── Performance testing ─────────────────────────────────────────────────────
+
+##@ Performance
+
+PERF_URL ?= http://host.docker.internal:8080
+
+.PHONY: perf
+perf: ## Run k6 performance tests via Docker (BASE_URL=http://... to override)
+	@bash dx/scripts/perf-test.sh $(PERF_URL)
+
 # ─── Observability stack ─────────────────────────────────────────────────────
 
 ##@ Observability

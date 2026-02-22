@@ -61,7 +61,7 @@ func Register(e *echo.Echo) {
 			return c.Path() == "/metrics"
 		},
 		DoNotUseRequestPathFor404: true, // prevents cardinality explosion from unknown paths
-		Registerer:               reg,
+		Registerer:                reg,
 	}
 	e.Use(echoprometheus.NewMiddlewareWithConfig(mwCfg))
 	e.GET("/metrics", echoprometheus.NewHandlerWithConfig(echoprometheus.HandlerConfig{
