@@ -1,126 +1,303 @@
 ---
 name: gen-test
-description: Generate Go unit tests for a domain's service, handler, or model using table-driven tests and interface mocks
+description: Generate Go unit and integration tests for a domain's handlers, service, or DTOs using table-driven tests, Echo v5 test utilities, and in-memory SQLite
 ---
 
-Generate idiomatic Go unit tests for a file within `internal/<domain>/`. No external test libraries — stdlib only (`testing`, `errors`, `net/http/httptest`, `strings`).
+Generate idiomatic Go tests for files within `biz/<domain>/`. Uses stdlib + Echo test utilities only. No external test libraries (no testify, etc.).
 
 ## Rules
 
 - Tests live in the **same package** as the code under test (e.g., `package user`) to access unexported types.
 - Use **table-driven tests**: `tests := []struct{ name string; ... }{ {...}, ... }` with `t.Run(tt.name, ...)`.
-- Mock the repository interface **inline** — define a `mock<Domain>Repository` struct in the test file that implements the private interface.
 - Use `t.Fatal` / `t.Errorf` — never `panic`.
 - Test both happy path and error cases.
-- Name test functions `Test<Type>_<method>` (e.g., `TestUserService_create`).
+- Name test functions `Test<Type>_<method>` (e.g., `TestController_createUser`).
+- For service tests, use an in-memory SQLite database (`file::memory:?cache=shared&mode=memory`).
 
-## Validation split — where tests live
+---
 
-Validation is split between two layers; test each in its own file:
+## File argument
 
-| What | Where to test | File |
-|------|--------------|------|
-| Field presence / format | `createRequest.Valid()` | `model_test.go` |
-| Business rules (uniqueness etc.) | `<domain>Service.*` | `service_test.go` |
-| HTTP decode + Valid() + status codes | `Controller.*` | `handler_test.go` |
+When invoked with a file path (e.g., `/gen-test biz/user/service.go`), generate the corresponding test file:
 
-## Model test pattern (`model_test.go`)
+| Source file | Test file | What to test |
+|-------------|-----------|--------------|
+| `dto/dto.go` | `dto/dto_test.go` | Validator tag behaviour |
+| `service.go` | `service_test.go` | CRUD ops with in-memory SQLite |
+| `controller.go` | `controller_test.go` | HTTP status codes via Echo |
+
+---
+
+## Test helper — in-memory SQLite
+
+Put this in a `testmain_test.go` (or inline in `service_test.go`) to create a real DB for every test:
 
 ```go
-func TestCreateRequest_Valid(t *testing.T) {
+package user
+
+import (
+    "database/sql"
+    "testing"
+
+    _ "modernc.org/sqlite"
+    sqlitedb "restful-boilerplate/repo/sqlite/db"
+    sqlitemig "restful-boilerplate/repo/sqlite"
+)
+
+func setupTestDB(t *testing.T) *sql.DB {
+    t.Helper()
+    db, err := sql.Open("sqlite", "file::memory:?cache=shared&mode=memory")
+    if err != nil {
+        t.Fatalf("open db: %v", err)
+    }
+    if err := sqlitemig.Migrate(db); err != nil {
+        t.Fatalf("migrate: %v", err)
+    }
+    t.Cleanup(func() { db.Close() })
+    return db
+}
+
+func newTestService(t *testing.T) *userService {
+    t.Helper()
+    db := setupTestDB(t)
+    return &userService{q: sqlitedb.New(db)}
+}
+```
+
+---
+
+## DTO test pattern (`dto/dto_test.go`)
+
+Test that go-playground/validator enforces the struct tags correctly.
+Use a real `validator.Validate` instance (same as `pkg/validator`):
+
+```go
+package dto
+
+import (
+    "testing"
+
+    "github.com/go-playground/validator/v10"
+)
+
+func TestCreateUserRequest_Validate(t *testing.T) {
+    v := validator.New()
     tests := []struct {
-        name     string
-        input    createRequest
-        wantKeys []string // field names expected in error map
+        name    string
+        input   CreateUserRequest
+        wantErr bool
+        errField string
     }{
-        {name: "valid", input: createRequest{Name: "Alice", Email: "a@b.com"}},
-        {name: "missing name", input: createRequest{Email: "a@b.com"}, wantKeys: []string{"name"}},
-        {name: "missing email", input: createRequest{Name: "Alice"}, wantKeys: []string{"email"}},
-        {name: "missing both", input: createRequest{}, wantKeys: []string{"name", "email"}},
+        {name: "valid", input: CreateUserRequest{Name: "Alice", Email: "alice@example.com"}, wantErr: false},
+        {name: "missing name", input: CreateUserRequest{Email: "alice@example.com"}, wantErr: true, errField: "Name"},
+        {name: "missing email", input: CreateUserRequest{Name: "Alice"}, wantErr: true, errField: "Email"},
+        {name: "invalid email", input: CreateUserRequest{Name: "Alice", Email: "not-an-email"}, wantErr: true, errField: "Email"},
+        {name: "name too long", input: CreateUserRequest{Name: string(make([]byte, 101)), Email: "a@b.com"}, wantErr: true, errField: "Name"},
     }
     for _, tt := range tests {
         t.Run(tt.name, func(t *testing.T) {
-            errs := tt.input.Valid(context.Background())
-            for _, k := range tt.wantKeys {
-                if _, ok := errs[k]; !ok {
-                    t.Errorf("expected error for field %q, got errors: %v", k, errs)
-                }
+            err := v.Struct(tt.input)
+            if (err != nil) != tt.wantErr {
+                t.Errorf("got err=%v, wantErr=%v", err, tt.wantErr)
             }
-            if len(tt.wantKeys) == 0 && len(errs) != 0 {
-                t.Errorf("expected no errors, got: %v", errs)
+            if tt.wantErr && tt.errField != "" {
+                var ve validator.ValidationErrors
+                if ok := errors.As(err, &ve); !ok {
+                    t.Fatalf("expected ValidationErrors, got %T", err)
+                }
+                found := false
+                for _, fe := range ve {
+                    if fe.Field() == tt.errField {
+                        found = true
+                        break
+                    }
+                }
+                if !found {
+                    t.Errorf("expected error on field %q, got: %v", tt.errField, ve)
+                }
             }
         })
     }
 }
 ```
 
+---
+
 ## Service test pattern (`service_test.go`)
 
-Service receives pre-validated requests; test business rules and repo interactions only.
+Uses a real in-memory SQLite DB — no mocking needed since sqlc generates a concrete `*Queries`:
 
 ```go
-type mockUserRepository struct {
-    createErr error
-    getErr    error
-    users     map[string]*User
-}
+package user
 
-func (m *mockUserRepository) create(_ context.Context, u *User) error  { return m.createErr }
-func (m *mockUserRepository) getByID(_ context.Context, id string) (*User, error) {
-    if m.getErr != nil { return nil, m.getErr }
-    u, ok := m.users[id]
-    if !ok { return nil, errNotFound }
-    return u, nil
-}
-// ... implement remaining interface methods
+import (
+    "context"
+    "errors"
+    "testing"
+)
 
-func TestUserService_create(t *testing.T) {
+func TestUserService_createUser(t *testing.T) {
     tests := []struct {
         name    string
-        input   createRequest
-        repoErr error
+        input   createUserInput
         wantErr bool
     }{
-        {name: "success", input: createRequest{Name: "Alice", Email: "a@b.com"}},
-        {name: "repo error", input: createRequest{Name: "A", Email: "a@b.com"}, repoErr: errors.New("db down"), wantErr: true},
+        {name: "success", input: createUserInput{Name: "Alice", Email: "alice@example.com"}},
+        {name: "duplicate email", input: createUserInput{Name: "Alice", Email: "alice@example.com"}, wantErr: true},
     }
+
+    svc := newTestService(t)
     for _, tt := range tests {
         t.Run(tt.name, func(t *testing.T) {
-            svc := newUserService(&mockUserRepository{createErr: tt.repoErr})
-            _, err := svc.create(context.Background(), tt.input)
+            _, err := svc.createUser(context.Background(), tt.input)
             if (err != nil) != tt.wantErr {
                 t.Errorf("got err=%v, wantErr=%v", err, tt.wantErr)
             }
         })
     }
 }
+
+func TestUserService_getUserByID(t *testing.T) {
+    svc := newTestService(t)
+    ctx := context.Background()
+
+    // seed
+    created, err := svc.createUser(ctx, createUserInput{Name: "Alice", Email: "alice@example.com"})
+    if err != nil {
+        t.Fatalf("seed: %v", err)
+    }
+
+    tests := []struct {
+        name    string
+        id      string
+        wantErr bool
+        errIs   error
+    }{
+        {name: "found", id: created.ID},
+        {name: "not found", id: "nonexistent", wantErr: true, errIs: errNotFound},
+    }
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            u, err := svc.getUserByID(ctx, tt.id)
+            if (err != nil) != tt.wantErr {
+                t.Errorf("got err=%v, wantErr=%v", err, tt.wantErr)
+            }
+            if tt.errIs != nil && !errors.Is(err, tt.errIs) {
+                t.Errorf("errors.Is: got %v, want %v", err, tt.errIs)
+            }
+            if err == nil && u.ID != tt.id {
+                t.Errorf("got id=%q, want %q", u.ID, tt.id)
+            }
+        })
+    }
+}
+
+func TestUserService_deleteUser(t *testing.T) {
+    svc := newTestService(t)
+    ctx := context.Background()
+
+    created, _ := svc.createUser(ctx, createUserInput{Name: "Bob", Email: "bob@example.com"})
+
+    tests := []struct {
+        name    string
+        id      string
+        wantErr bool
+        errIs   error
+    }{
+        {name: "success", id: created.ID},
+        {name: "not found", id: "nonexistent", wantErr: true, errIs: errNotFound},
+    }
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            err := svc.deleteUser(ctx, tt.id)
+            if (err != nil) != tt.wantErr {
+                t.Errorf("got err=%v, wantErr=%v", err, tt.wantErr)
+            }
+            if tt.errIs != nil && !errors.Is(err, tt.errIs) {
+                t.Errorf("errors.Is: got %v, want %v", err, tt.errIs)
+            }
+        })
+    }
+}
 ```
 
-## Handler test pattern (`handler_test.go`)
+---
 
-Use `net/http/httptest` — covers the full decode → Valid() → service → encode pipeline.
+## Handler test pattern (`controller_test.go`)
+
+Use `net/http/httptest` + Echo to test the full handler pipeline (bind → validate → service → response):
 
 ```go
-func TestController_create(t *testing.T) {
+package user
+
+import (
+    "net/http"
+    "net/http/httptest"
+    "strings"
+    "testing"
+
+    "github.com/labstack/echo/v5"
+    cv "restful-boilerplate/pkg/validator"
+)
+
+func newTestEcho(t *testing.T) (*echo.Echo, *Controller) {
+    t.Helper()
+    e := echo.New()
+    e.Validator = cv.New()
+    db := setupTestDB(t)
+    ctrl := NewController(db)
+    ctrl.RegisterRoutes(e.Group("/users"))
+    return e, ctrl
+}
+
+func TestController_createUser(t *testing.T) {
     tests := []struct {
         name       string
         body       string
         wantStatus int
     }{
-        {name: "valid", body: `{"name":"Alice","email":"a@b.com"}`, wantStatus: http.StatusCreated},
-        {name: "missing fields", body: `{"name":""}`, wantStatus: http.StatusUnprocessableEntity},
+        {name: "valid", body: `{"name":"Alice","email":"alice@example.com"}`, wantStatus: http.StatusCreated},
+        {name: "missing name", body: `{"email":"alice@example.com"}`, wantStatus: http.StatusUnprocessableEntity},
+        {name: "missing email", body: `{"name":"Alice"}`, wantStatus: http.StatusUnprocessableEntity},
+        {name: "invalid email", body: `{"name":"Alice","email":"bad"}`, wantStatus: http.StatusUnprocessableEntity},
         {name: "malformed json", body: `{bad}`, wantStatus: http.StatusBadRequest},
     }
+
+    e, _ := newTestEcho(t)
     for _, tt := range tests {
         t.Run(tt.name, func(t *testing.T) {
-            mux := http.NewServeMux()
-            NewController().RegisterRoutes(mux)
-
             req := httptest.NewRequest(http.MethodPost, "/users", strings.NewReader(tt.body))
             req.Header.Set("Content-Type", "application/json")
             w := httptest.NewRecorder()
-            mux.ServeHTTP(w, req)
+            e.ServeHTTP(w, req)
 
+            if w.Code != tt.wantStatus {
+                t.Errorf("got %d, want %d — body: %s", w.Code, tt.wantStatus, w.Body.String())
+            }
+        })
+    }
+}
+
+func TestController_getUserByID(t *testing.T) {
+    e, ctrl := newTestEcho(t)
+    ctx := context.Background()
+
+    // seed via service
+    created, _ := ctrl.svc.createUser(ctx, createUserInput{Name: "Alice", Email: "alice@example.com"})
+
+    tests := []struct {
+        name       string
+        id         string
+        wantStatus int
+    }{
+        {name: "found", id: created.ID, wantStatus: http.StatusOK},
+        {name: "not found", id: "nonexistent", wantStatus: http.StatusNotFound},
+    }
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            req := httptest.NewRequest(http.MethodGet, "/users/"+tt.id, nil)
+            w := httptest.NewRecorder()
+            e.ServeHTTP(w, req)
             if w.Code != tt.wantStatus {
                 t.Errorf("got %d, want %d — body: %s", w.Code, tt.wantStatus, w.Body.String())
             }
@@ -129,42 +306,12 @@ func TestController_create(t *testing.T) {
 }
 ```
 
-## Integration test pattern (`run_test.go` in `cmd/api/`)
+---
 
-Use the testable `run()` function to start a real server on a random port:
+## Run tests
 
-```go
-func TestRun_healthz(t *testing.T) {
-    ctx, cancel := context.WithCancel(context.Background())
-    defer cancel()
-
-    getenv := func(key string) string {
-        return map[string]string{
-            "SERVER_PORT": "0", // OS picks a free port
-        }[key]
-    }
-
-    errCh := make(chan error, 1)
-    go func() { errCh <- run(ctx, io.Discard, getenv) }()
-
-    // TODO: get actual port from server (requires addr to be returned from run())
-    resp, err := http.Get("http://localhost:8080/healthz")
-    if err != nil { t.Fatal(err) }
-    if resp.StatusCode != http.StatusOK {
-        t.Errorf("healthz: got %d, want 200", resp.StatusCode)
-    }
-
-    cancel()
-    if err := <-errCh; err != nil {
-        t.Errorf("run() error: %v", err)
-    }
-}
+```bash
+go test ./biz/<domain>/...
+go test ./biz/<domain>/... -v -run TestController_
+go test ./... -count=1   # all domains, no cache
 ```
-
-## What to generate
-
-When invoked with a file argument (e.g., `/gen-test internal/user/service.go`), generate the corresponding test file:
-
-- `model.go` → `model_test.go` (test all `Valid()` methods)
-- `service.go` → `service_test.go` (test all service methods with mock repo)
-- `handler.go` or `controller.go` → `handler_test.go` (test HTTP status codes via httptest)
