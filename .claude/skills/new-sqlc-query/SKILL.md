@@ -70,7 +70,7 @@ RETURNING *;
 2. Run:
    ```bash
    go tool sqlc generate
-   go build ./...
+   make check
    ```
 3. The generated method appears in `repo/sqlite/db/<domain>.sql.go`
 4. Import and call it from `biz/<domain>/service.go` via `s.q.<QueryName>(ctx, ...)`

@@ -58,17 +58,19 @@ Only suppress if you have verified the error can be safely ignored.
 
 ## Project linter config
 
-`.golangci.yml` — 36 linters, 5m timeout. Key settings:
+`.golangci.yml` — 23 linters, 5m timeout. Key settings:
 - `errcheck`: checks all error returns
 - `govet`: enabled with shadow checking
-- `cyclop`: max complexity 10
-- `gocognit`: max cognitive complexity 20
-- `gosec`: security checks (excludes test files)
+- `cyclop`: max complexity 15, package average 10.0
+- `gocognit`: max cognitive complexity 15
+- `gosec`: security checks (excludes G115)
+- `gochecknoglobals`: no package-level vars (except in dx/docs/)
+- `exhaustive`: all enum switch cases covered
+- `contextcheck`: context passed correctly throughout call chains
 
 ## After fixing
 
 Always verify after lint fixes:
 ```bash
-go build ./...
-go test ./...
+make check
 ```

@@ -2,165 +2,204 @@
 
 ## Project Overview
 
-A Go RESTful API boilerplate demonstrating idiomatic Go patterns with **zero external dependencies**. Built on Go 1.25.0 standard library only (`net/http`, `log/slog`, `encoding/json`, `sync`, `crypto/rand`).
+A Go RESTful API boilerplate built on **Echo v5 + SQLite + sqlc** with full observability (OpenTelemetry, Tempo, Loki, Grafana). Demonstrates idiomatic Go patterns for a modular monolith.
 
 **Module:** `restful-boilerplate`
+**Go version:** 1.25.0
+
+**Key dependencies:**
+- `github.com/labstack/echo/v5` — HTTP framework
+- `modernc.org/sqlite` — SQLite driver (pure Go, no CGO)
+- `github.com/go-playground/validator/v10` — request validation
+- `github.com/swaggo/swag` — OpenAPI/Swagger generation
+
+**Dev tools (via `go tool`):**
+- `go tool sqlc generate` — type-safe SQL codegen
+- `go tool swag init ...` — Swagger doc generation
+- `go tool air` — hot-reload development server
+- `go tool golangci-lint run ./...` — linting (via Makefile: `make lint`)
 
 ---
 
 ## Directory Structure
 
 ```
+biz/
+  <domain>/             → One folder per business domain
+    route.go            → Controller struct + NewController(db) + RegisterRoutes
+    controller.go       → HTTP handler methods (unexported) + swag annotations
+    model.go            → Domain entity + input types + errNotFound sentinel
+    service.go          → Business logic + CRUD + generateID()
+    dto/dto.go          → Request DTOs with validate + example tags
 cmd/
-  api/main.go           → HTTP API server entrypoint
-  worker/main.go        → Background worker entrypoint
-configs/
-  config.go             → Env-var config loader (SERVER_HOST, SERVER_PORT, timeouts)
-internal/
-  <domain>/             → One folder per business domain (modular monolith)
-    controller.go       → ONLY exported type — wires DI, registers routes/jobs
-    handler.go          → HTTP handlers (unexported)
-    model.go            → Domain entity + request/response structs (unexported)
-    repository.go       → Repository interface + in-memory impl (all unexported)
-    service.go          → Business logic, validation, ID generation (unexported)
-deployments/            → Docker, Kubernetes manifests (placeholder)
-scripts/                → Build/deploy shell scripts (placeholder)
-test/                   → Integration test data and helpers (placeholder)
+  http/main.go          → Echo server entrypoint + registerRouters()
+pkg/
+  config/config.go      → Env-var config loader
+  logger/logger.go      → slog MultiWriter (stdout + ./logs/app.log)
+  metrics/metrics.go    → Prometheus metrics
+  middleware/           → Request logger middleware
+  otelecho/middleware.go → Custom Echo v5 OTEL middleware
+  telemetry/            → OTLP TracerProvider setup
+  validator/validator.go → Echo Validator adapter (go-playground/validator)
+repo/sqlite/
+  db/                   → sqlc-generated Go code (gitignored source)
+  migrations/           → SQL CREATE TABLE files + migration runner (main.go)
+  queries/              → sqlc-annotated SQL query files
+  db.go                 → OpenDB() — single connection + WAL + busy_timeout
+  migrate.go            → Migrate() — runs all migration files
+dx/
+  deploy/               → Docker Compose for observability stack (Tempo, Loki, Alloy, Grafana)
+  docs/                 → swag-generated OpenAPI docs (gitignored)
+  scripts/              → k6 performance test script
+  test/                 → Integration test helpers
+sqlc.yaml               → sqlc v2 config
+.golangci.yml           → golangci-lint config (23 linters, 5m timeout)
+Makefile                → All dev tasks
 ```
 
 ---
 
 ## Architecture: Modular Monolith
 
-Each domain under `internal/` is fully self-contained. **`Controller` is the only exported symbol** per domain — all other types (service, repository, handlers, models) are package-private.
+Each domain under `biz/` is fully self-contained. **`Controller` is the only exported symbol** per domain package — all other types are package-private.
 
 ```
-cmd/api/main.go
-    └── user.NewController().RegisterRoutes(mux)   ← only touch point
-            └── newUserService(repo)                ← internal wiring
-                    └── newInMemoryRepository()
+cmd/http/main.go
+    └── registerRouters(g *echo.Group, db *sql.DB)
+            └── user.NewController(db).RegisterRoutes(g.Group("/users"))
+                    └── &userService{q: sqlitedb.New(db)}
 ```
 
-To add a new domain, create `internal/<domain>/` with the same 5-file pattern, then call `<domain>.NewController().RegisterRoutes(mux)` in `cmd/api/main.go`.
-
-The `cmd/worker` binary follows the same pattern: `<domain>.NewController().StartScheduler(ctx)`.
+To add a new domain: run `/new-domain` — it creates all 5 files and wires into `cmd/http/main.go`.
 
 ---
 
 ## Key Patterns
 
-- **Single export rule:** `Controller` is the only exported type per domain package. Everything else is unexported — enforced by package privacy.
-- **`run()` delegation:** `main()` only calls `run(ctx, os.Stdout, os.Getenv)` and exits on error. All setup lives in `run()` — making it callable from tests.
-- **Injectable env:** `config.Load(getenv func(string) string)` — never calls `os.Getenv` directly. `run()` passes its own `getenv`; tests supply a custom map.
-- **Graceful shutdown:** `signal.NotifyContext()` drives shutdown via context cancellation. Call `stop()` after `<-ctx.Done()` to release the OS signal subscription.
-- **Generic `decode[T]()`:** Single helper in `handler.go` for all JSON request decoding — `decode[createRequest](r)`. No inline `json.NewDecoder` in handlers.
-- **Validator interface:** Request structs implement `Valid(ctx context.Context) map[string]string`. Handlers call it after decode and return 422 + `{"errors": {...}}` on failure. Services only contain business-rule validation.
-- **Private repository interface:** `userRepository` interface lives inside the `user` package — service and handler can't escape to callers.
-- **Concurrency safety:** `inMemoryRepository` uses `sync.RWMutex` (RLock for reads, Lock for writes).
-- **Context propagation:** All repo/service methods accept `ctx context.Context` as first arg.
-- **Error handling:** `fmt.Errorf("op: %w", err)` for wrapping; sentinel errors with `errors.Is()`.
-- **Crypto IDs:** 8-byte hex via `crypto/rand` (not sequential integers).
-- **Structured logging:** `log/slog` with `NewJSONHandler` — JSON to stdout.
+- **Single export rule:** `Controller` is the only exported type per domain. Everything else uses lowercase names (unexported).
+- **DI via NewController:** `NewController(db *sql.DB) *Controller` wires the sqlc querier internally. No global state.
+- **Handler pipeline:** `c.Bind` → `c.Validate` → service call → `c.JSON`. Return 400 for bind errors, 422 for validation (auto-handled by `pkg/validator`), 404 for not-found, 500 for unexpected.
+- **Validation:** go-playground/validator tags on DTOs (`validate:"required,min=1,max=100"`). NOT manual `Valid()` method. `c.Validate(&req)` triggers automatic 422 response via `pkg/validator`.
+- **Service errors:** Wrap with `fmt.Errorf("opName: %w", err)`. Map `sql.ErrNoRows` → `errNotFound` sentinel in model.go. Use `errors.Is()` — never `==`.
+- **ID generation:** `generateID()` helper in service.go — `crypto/rand` 8-byte hex.
+- **Context:** All service/repo methods accept `ctx context.Context` as first parameter.
+- **Structured logging:** `pkg/logger` — slog with JSON output to stdout + `./logs/app.log`. Inject via `logger.FromContext(ctx)` to get trace-correlated logger.
+- **OTEL tracing:** `pkg/telemetry/otel.go` — OTLP HTTP. Store tracer as `tracer trace.Tracer` struct field (not global). Use `pkg/otelecho` middleware for Echo v5.
 
 ---
 
 ## HTTP API
 
-Base: `http://localhost:8080`
+Base: `http://localhost:8080/api`
 
-| Method | Path          | Action      |
-|--------|---------------|-------------|
-| GET    | /healthz      | health check (200 OK) |
-| GET    | /users        | list        |
-| POST   | /users        | create      |
-| GET    | /users/{id}   | getByID     |
-| PUT    | /users/{id}   | update      |
-| DELETE | /users/{id}   | delete      |
+| Method | Path               | Action      |
+|--------|--------------------|-------------|
+| GET    | /healthz           | health check (200 OK) |
+| GET    | /api/users         | list all    |
+| POST   | /api/users         | create      |
+| GET    | /api/users/{id}    | get by ID   |
+| PUT    | /api/users/{id}    | update      |
+| DELETE | /api/users/{id}    | delete      |
+| GET    | /swagger/*         | Swagger UI  |
+| GET    | /metrics           | Prometheus  |
 
 ---
 
 ## Development Commands
 
 ```bash
-# Run API server
-go run ./cmd/api
+# Hot-reload dev server
+make dev
 
-# Run background worker
-go run ./cmd/worker
+# Run server (no hot-reload)
+make run
 
-# Build all binaries
-go build -o bin/api ./cmd/api
-go build -o bin/worker ./cmd/worker
+# Apply DB migrations (runner is repo/sqlite/migrations/main.go)
+make migrate
 
-# Run all tests
-go test ./...
+# Full quality gate (fmt + vet + lint + test) — also the post-edit hook
+make check
 
-# Format all Go files
-gofmt -w .
+# Individual quality steps
+make fmt       # gofmt -w .
+make vet       # go vet ./...
+make lint      # golangci-lint run ./...
+make test      # go test ./...
 
-# Vet code
-go vet ./...
+# Code generation
+make sqlc      # go tool sqlc generate
+make swagger   # go tool swag init -g cmd/http/main.go -o dx/docs/
 
-# Compile check (all packages)
-go build ./...
+# Build binaries
+make build
 
-# Health check
-curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/healthz
-# Expected: 200
-
-# Validation error (422 with field map)
-curl -s -X POST http://localhost:8080/users \
-  -H "Content-Type: application/json" \
-  -d '{"name":""}' | jq
-# Expected: 422 {"errors": {"email": "email is required", "name": "name is required"}}
-
-# Create user
-curl -s -X POST http://localhost:8080/users \
-  -H "Content-Type: application/json" \
-  -d '{"name":"Alice","email":"alice@example.com"}' | jq
-
-curl -s http://localhost:8080/users | jq
+# Observability stack (Tempo + Loki + Alloy + Grafana + Prometheus)
+make obs/up
+make obs/down
 ```
 
 ---
 
 ## Code Conventions
 
-- Follow standard Go formatting (`gofmt`) — enforced by post-edit hook.
-- **One export per domain:** Only `Controller` is exported from each `internal/<domain>` package.
-- **`main()` stays lean:** All logic lives in `run(ctx, w, getenv)`. `main()` only calls it and exits on error.
-- **Handler pipeline:** `decode[T]()` → `Valid()` → service call → `writeJSON`. Return 422 for validation errors (`{"errors": {...}}`), 400 for malformed JSON, 500 for unexpected errors.
-- **Validation split:** Format/presence checks belong in `model.go` (`Valid()` method). Business-rule checks (uniqueness, state transitions) belong in `service.go`.
+- Follow standard Go formatting (`gofmt`) — enforced by post-edit hook + `make fmt`.
+- **One export per domain:** Only `Controller` is exported from each `biz/<domain>` package.
+- **Handler signature:** `func (ctrl *Controller) xxxHandler(c *echo.Context) error`
+- **Bind errors:** return `c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})`
+- **Validate errors:** return `err` (pkg/validator auto-sends 422 with field details)
+- **Not found:** return `c.JSON(http.StatusNotFound, map[string]string{"error": "<domain> not found"})`
+- **Internal errors:** log full error with slog, return `c.JSON(http.StatusInternalServerError, map[string]string{"error": "internal error"})` — never expose `err.Error()` directly in production 500s.
+- All `@Summary`, `@Tags`, `@Router`, status codes in swag annotations — every handler.
 - Use `errors.Is()` / `errors.As()` — never compare errors with `==`.
 - Always pass `context.Context` as first parameter in functions that do I/O.
-- Wrap errors with context: `fmt.Errorf("userService.create: %w", err)`.
-- No global state — all state flows through DI inside `NewController()`.
-- Use `sync.RWMutex` for concurrent map access (RLock for reads).
-- All internal types use lowercase names (unexported by convention).
+- Wrap errors: `fmt.Errorf("opName: %w", err)`.
+- No global state — all state flows through constructors.
 
 ---
 
 ## Adding a New Domain
 
-1. Create `internal/<domain>/` with these 5 files:
-   - `model.go` — domain struct + request/response types (all unexported)
-   - `repository.go` — private interface + in-memory impl
-   - `service.go` — business logic, validation, ID generation
-   - `handler.go` — HTTP handler methods on `*Controller` (unexported)
-   - `controller.go` — exported `Controller`, `NewController()`, `RegisterRoutes()`
-2. In `cmd/api/main.go`: add `<domain>.NewController().RegisterRoutes(mux)`
-3. In `cmd/worker/main.go` (if needed): add scheduler hookup
+Use the `/new-domain` skill — it handles the full scaffold automatically:
 
-Copy `internal/user/` as a reference implementation.
+1. `repo/sqlite/migrations/<domain>.sql` — CREATE TABLE
+2. `repo/sqlite/queries/<domain>.sql` — sqlc CRUD queries
+3. `go tool sqlc generate` — generates `repo/sqlite/db/<domain>.sql.go`
+4. `biz/<domain>/model.go` — entity + input types + errNotFound
+5. `biz/<domain>/dto/dto.go` — request DTOs with validate + example tags
+6. `biz/<domain>/service.go` — CRUD + generateID() + mapper
+7. `biz/<domain>/route.go` — Controller struct + NewController + RegisterRoutes
+8. `biz/<domain>/controller.go` — handler methods with swag annotations
+9. Wire `<domain>.NewController(db).RegisterRoutes(g.Group("/<domain>s"))` in `cmd/http/main.go`
+10. `make swagger` — regenerate OpenAPI docs
+11. `make check` — verify compilation, lint, tests pass
+
+Copy `biz/user/` as the reference implementation.
 
 ---
 
-## Planned / Next Steps
+## Observability Stack
 
-- SQLite repository implementation (swap `inMemoryRepository` — interface already in place)
-- Unit tests in `internal/<domain>/` + integration test helpers in `test/`
-- `golangci-lint` config (`.golangci.yml`)
-- Makefile for common tasks
-- Dockerfile + k8s manifests in `deployments/`
-- Build/deploy scripts in `scripts/`
+Start with `make obs/up`. Access Grafana at `http://localhost:3000`.
 
+| Component | Role |
+|-----------|------|
+| Tempo | Trace backend (OTLP HTTP port 4318) |
+| Loki | Log aggregation |
+| Alloy | Log shipper — tails `./logs/app.log` |
+| Prometheus | Metrics scraper |
+| Grafana | Visualization (datasource UIDs: `tempo`, `loki`) |
+
+**Code integration:**
+- `pkg/telemetry/setup.go` — `SetupAll(ctx, logPath)` initialises tracer + log file
+- `pkg/otelecho/middleware.go` — injects `trace_id` + `span_id` into request context
+- `pkg/logger/logger.go` — `logger.FromContext(ctx)` returns trace-correlated slog.Logger
+- Set `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318` (default in dev)
+
+---
+
+## SQLite Notes
+
+- Single connection mode (`MaxOpenConns(1)`) — serialises access, prevents `SQLITE_BUSY`
+- `PRAGMA busy_timeout=5000` set on every connection open
+- WAL mode enabled for better read concurrency
+- `repo/sqlite/db.go` — `OpenDB(ctx, path)` — always use this, never `sql.Open` directly

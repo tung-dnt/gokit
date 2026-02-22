@@ -95,5 +95,5 @@ http://localhost:8080/swagger/index.html
 - [ ] All success/error status codes documented
 - [ ] Entity structs have `example` tags
 - [ ] DTO structs have `example` tags
-- [ ] `go tool swag init -g cmd/http/main.go -o dx/docs/` ran successfully
-- [ ] `go build ./...` passes
+- [ ] `make swagger` ran successfully
+- [ ] `make check` passes

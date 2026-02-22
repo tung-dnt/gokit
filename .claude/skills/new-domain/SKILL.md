@@ -56,7 +56,7 @@ DELETE FROM <domain>s WHERE id = ?;
 Then run:
 ```bash
 go tool sqlc generate
-go build ./...
+go build ./...   # verify codegen compiles
 ```
 
 This generates `repo/sqlite/db/<domain>.sql.go` with typed query methods.
@@ -419,5 +419,5 @@ go build ./...
 - [ ] `biz/<domain>/route.go` — Controller struct + NewController(db) + RegisterRoutes
 - [ ] `biz/<domain>/controller.go` — handler methods with swag annotations
 - [ ] `cmd/http/main.go` — add to registerRouters
-- [ ] `go tool swag init -g cmd/http/main.go -o dx/docs/` — regenerate Swagger
-- [ ] `go build ./...` — verify compilation
+- [ ] `make swagger` — regenerate Swagger docs
+- [ ] `make check` — fmt + vet + lint + test all pass
