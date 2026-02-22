@@ -37,6 +37,13 @@ func main() {
 	}
 	defer db.Close()
 
+	// Single connection serialises access at the Go level, preventing SQLITE_BUSY
+	// between goroutines. busy_timeout is per-connection so must be set on every open.
+	db.SetMaxOpenConns(1)
+	if _, err := db.Exec(`PRAGMA busy_timeout=5000;`); err != nil {
+		panic("configure db: " + err.Error())
+	}
+
 	e := echo.New()
 	e.Validator = cv.New()
 	metrics.Register(e)
