@@ -1,6 +1,7 @@
 package sqlite
 
 import (
+	"context"
 	"database/sql"
 	_ "embed"
 	"fmt"
@@ -10,8 +11,8 @@ import (
 var userSchema string
 
 // Migrate applies all DDL migrations to the database.
-func Migrate(db *sql.DB) error {
-	if _, err := db.Exec(userSchema); err != nil {
+func Migrate(ctx context.Context, db *sql.DB) error {
+	if _, err := db.ExecContext(ctx, userSchema); err != nil {
 		return fmt.Errorf("apply user schema: %w", err)
 	}
 	return nil

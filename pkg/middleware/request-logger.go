@@ -11,7 +11,7 @@ import (
 	"restful-boilerplate/pkg/logger"
 )
 
-// requestLog emits a structured JSON log line per request with method, path,
+// RequestLog emits a structured JSON log line per request with method, path,
 // status code, latency, and — when a span is active — trace_id and span_id.
 func RequestLog(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c *echo.Context) error {

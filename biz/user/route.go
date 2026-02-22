@@ -14,6 +14,7 @@ type Controller struct {
 	svc *userService
 }
 
+// NewController creates a new user Controller backed by db.
 func NewController(db *sql.DB) *Controller {
 	return &Controller{svc: &userService{
 		q:      sqlitedb.New(db),
@@ -21,6 +22,7 @@ func NewController(db *sql.DB) *Controller {
 	}}
 }
 
+// RegisterRoutes mounts all user endpoints onto g.
 func (ctrl *Controller) RegisterRoutes(g *echo.Group) {
 	g.GET("", ctrl.listUsersHandler)
 	g.POST("", ctrl.createUserHandler)

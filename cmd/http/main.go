@@ -43,13 +43,16 @@ func main() {
 		slog.Error("failed to setup tracing", "error", err)
 		os.Exit(1)
 	}
-	defer stopTracing()
 
 	db, err := sqlitedb.OpenDB(ctx, "./data.db")
 	if err != nil {
 		slog.Error("failed to open database", "error", err)
+		stopTracing()
 		os.Exit(1)
 	}
+
+	// All early-exit paths done; defers are safe from here.
+	defer stopTracing()
 	defer db.Close() //nolint:errcheck // best-effort close on exit
 
 	e := echo.New()
@@ -75,7 +78,7 @@ func main() {
 	})
 
 	cfg := config.Load(os.Getenv).Server
-	if err := e.Start(cfg.Host + ":" + cfg.Port); err != nil {
+	if err = e.Start(cfg.Host + ":" + cfg.Port); err != nil {
 		e.Logger.Error("failed to start server", "error", err)
 	}
 }

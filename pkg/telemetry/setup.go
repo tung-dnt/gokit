@@ -18,20 +18,20 @@ func SetupAll(ctx context.Context, logPath string) (func(), error) {
 	}
 
 	if dir := filepath.Dir(logPath); dir != "." {
-		if err := os.MkdirAll(dir, 0o750); err != nil { //nolint:gosec // 0750 intentional
-			_ = shutdownTracer(ctx)
-			return nil, fmt.Errorf("create logs dir: %w", err)
+		if mkdirErr := os.MkdirAll(dir, 0o750); mkdirErr != nil {
+			_ = shutdownTracer(ctx) //nolint:errcheck // best-effort cleanup on error path
+			return nil, fmt.Errorf("create logs dir: %w", mkdirErr)
 		}
 	}
 
 	closeLog, err := logger.Setup(logPath)
 	if err != nil {
-		_ = shutdownTracer(ctx)
+		_ = shutdownTracer(ctx) //nolint:errcheck // best-effort cleanup on error path
 		return nil, fmt.Errorf("setup logger: %w", err)
 	}
 
 	return func() {
-		_ = closeLog()
-		_ = shutdownTracer(ctx)
+		_ = closeLog()          //nolint:errcheck // best-effort cleanup on shutdown
+		_ = shutdownTracer(ctx) //nolint:errcheck // best-effort cleanup on shutdown
 	}, nil
 }

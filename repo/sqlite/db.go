@@ -16,9 +16,9 @@ func OpenDB(ctx context.Context, path string) (*sql.DB, error) {
 	}
 
 	db.SetMaxOpenConns(1)
-	if _, err := db.ExecContext(ctx, `PRAGMA busy_timeout=5000;`); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("configure db: %w", err)
+	if _, execErr := db.ExecContext(ctx, `PRAGMA busy_timeout=5000;`); execErr != nil {
+		_ = db.Close() //nolint:errcheck // best-effort close on error path
+		return nil, fmt.Errorf("configure db: %w", execErr)
 	}
 
 	return db, nil

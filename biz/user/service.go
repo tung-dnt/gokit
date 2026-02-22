@@ -116,7 +116,11 @@ func (s *userService) deleteUser(ctx context.Context, id string) error {
 		span.SetStatus(codes.Error, err.Error())
 		return fmt.Errorf("deleteUser: %w", err)
 	}
-	if n, _ := result.RowsAffected(); n == 0 {
+	n, rowsErr := result.RowsAffected()
+	if rowsErr != nil {
+		return fmt.Errorf("deleteUser rows affected: %w", rowsErr)
+	}
+	if n == 0 {
 		return errNotFound
 	}
 	return nil

@@ -7,12 +7,9 @@ run:
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0
-  exclude-rules:
-    - path: '_test\.go'
-      linters: [bodyclose, errcheck, noctx, wrapcheck]
 
 linters:
-  disable-all: true
+  default: none
   enable:
     # Correctness
     - errcheck
@@ -48,6 +45,23 @@ linters:
     - perfsprint
     - intrange
 
+  exclusions:
+    paths:
+      - dx/docs  # auto-generated swagger docs; swaggo header doesn't match Go generated-file standard
+    rules:
+      - path: '_test\.go'
+        linters: [bodyclose, errcheck, noctx, wrapcheck]
+      # Auto-generated swagger docs — swaggo uses a non-standard generated header
+      # that golangci-lint does not recognise, so suppress by error text.
+      - text: 'SwaggerInfo is a global variable'
+        linters: [gochecknoglobals]
+      - text: 'SwaggerInfo holds exported Swagger Info'
+        linters: [godot]
+      # Package names "user" (conflicts with os/user) and "metrics" (conflicts with
+      # runtime/metrics) are intentional domain names; suppress revive var-naming.
+      - text: 'avoid package names that conflict with Go standard library package names'
+        linters: [revive]
+
   settings:
     errcheck:
       check-type-assertions: true
@@ -70,6 +84,9 @@ linters:
         - name: if-return
         - name: receiver-naming
         - name: var-naming
+    godot:
+      exclude:
+        - '^\s*@'  # swag annotations; a trailing period would break the parser
     cyclop:
       max-complexity: 15
       package-average: 10.0

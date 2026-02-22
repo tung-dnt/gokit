@@ -37,7 +37,7 @@ worker: ## Run background worker
 
 .PHONY: migrate
 migrate: ## Apply DB migrations (default: ./data.db)
-	go run ./cmd/migrate -db $(DB_PATH)
+	go run ./repo/sqlite/migrations -db $(DB_PATH)
 
 # ─── Build ───────────────────────────────────────────────────────────────────
 
