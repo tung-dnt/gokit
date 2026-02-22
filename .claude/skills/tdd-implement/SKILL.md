@@ -12,7 +12,7 @@ The user ran: `/tdd-implement "<task path or title>"`
 
 If a file path was provided, read the task file using the Read tool. If only a title was given, ask for the full path or search for the file in:
 ```
-/Users/tung-dnt/Library/Mobile Documents/iCloud~md~obsidian/Documents/Personal/TaskNotes/Tasks/
+~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Personal/TaskNotes/Tasks/
 ```
 
 ---

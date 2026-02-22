@@ -60,7 +60,7 @@ Invoke the `obsidian-task-writer` agent with the approved feature-planner plan.
 
 The agent will write task files to:
 ```
-/Users/tung-dnt/Library/Mobile Documents/iCloud~md~obsidian/Documents/Personal/TaskNotes/Tasks/
+~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Personal/TaskNotes/Tasks/
 ```
 
 After the agent completes, show the user the numbered list of created task file paths.
