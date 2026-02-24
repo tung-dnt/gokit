@@ -4,7 +4,7 @@
 
 A Go RESTful API boilerplate built on **Echo v5 + SQLite + sqlc** with full observability (OpenTelemetry, Tempo, Loki, Grafana). Demonstrates idiomatic Go patterns for a modular monolith.
 
-**Module:** `restful-boilerplate` | **Go:** 1.25.0 | **Deps:** Echo v5, modernc/sqlite, go-playground/validator, swaggo/swag
+**Module:** `restful-boilerplate` | **Go:** 1.26.0 | **Deps:** Echo v5, modernc/sqlite, go-playground/validator, swaggo/swag
 
 **Dev tools (via `go tool`):** `sqlc generate`, `swag init`, `air`, `golangci-lint`
 
@@ -14,36 +14,34 @@ A Go RESTful API boilerplate built on **Echo v5 + SQLite + sqlc** with full obse
 
 ```
 biz/
-  <domain>/             → One folder per business domain
-    route.go            → Controller struct + NewController(db) + RegisterRoutes
-    controller.go       → HTTP handler methods (unexported) + swag annotations
-    model.go            → Domain entity + input types + errNotFound sentinel
-    service.go          → Business logic + CRUD + generateID()
-    dto/dto.go          → Request DTOs with validate + example tags
+  <domain>/              → One folder per business domain
+    route.go             → Controller struct + NewController(db) + RegisterRoutes
+    controller.go        → HTTP handler methods (unexported) + swag annotations
+    model.go             → Domain entity + input types + errNotFound sentinel
+    service.go           → Business logic + CRUD + generateID()
+    dto/dto.go           → Request DTOs with validate + example tags
 cmd/
-  http/main.go          → Echo server entrypoint + registerRouters()
+  http/main.go           → Echo server entrypoint + registerRouters()
 pkg/
-  config/config.go      → Env-var config loader
-  logger/logger.go      → slog MultiWriter (stdout + ./logs/app.log)
-  metrics/metrics.go    → Prometheus metrics
-  middleware/           → Request logger middleware
+  config/config.go       → Env-var config loader
+  logger/logger.go       → slog MultiWriter (stdout + ./logs/app.log)
+  metrics/metrics.go     → Prometheus metrics
+  middleware/            → Request logger middleware
   otelecho/middleware.go → Custom Echo v5 OTEL middleware
-  telemetry/            → OTLP TracerProvider setup
+  telemetry/             → OTLP TracerProvider setup
   validator/validator.go → Echo Validator adapter (go-playground/validator)
 repo/sqlite/
-  db/                   → sqlc-generated Go code (gitignored source)
-  migrations/           → SQL CREATE TABLE files + migration runner (main.go)
-  queries/              → sqlc-annotated SQL query files
-  db.go                 → OpenDB() — single connection + WAL + busy_timeout
-  migrate.go            → Migrate() — runs all migration files
+  db/                    → sqlc-generated Go code (gitignored source)
+  migrations/            → SQL CREATE TABLE files + migration runner (main.go)
+  queries/               → sqlc-annotated SQL query files
 dx/
-  deploy/               → Docker Compose for observability stack (Tempo, Loki, Alloy, Grafana)
-  docs/                 → swag-generated OpenAPI docs (gitignored)
-  scripts/              → k6 performance test script
-  test/                 → Integration test helpers
-sqlc.yaml               → sqlc v2 config
-.golangci.yml           → golangci-lint config (23 linters, 5m timeout)
-Makefile                → All dev tasks
+  deploy/                → Docker Compose for observability stack (Tempo, Loki, Alloy, Grafana)
+  docs/                  → swag-generated OpenAPI docs (gitignored)
+  scripts/               → k6 performance test script
+  test/                  → Integration test helpers
+sqlc.yaml                → sqlc v2 config
+.golangci.yml            → golangci-lint config (23 linters, 5m timeout)
+Makefile                 → All dev tasks
 ```
 
 ---
