@@ -34,6 +34,8 @@ repo/sqlite/
   db/                    → sqlc-generated Go code (gitignored source)
   migrations/            → SQL CREATE TABLE files + migration runner (main.go)
   queries/               → sqlc-annotated SQL query files
+  db.go                  → OpenDB() — single connection + WAL + busy_timeout
+  migrate.go             → Migrate() — runs all migration files
 dx/
   deploy/                → Docker Compose for observability stack (Tempo, Loki, Alloy, Grafana)
   docs/                  → swag-generated OpenAPI docs (gitignored)
