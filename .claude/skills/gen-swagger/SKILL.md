@@ -1,6 +1,6 @@
 ---
 name: gen-swagger
-description: Add or update swag annotations on Echo handlers and regenerate the OpenAPI/Swagger docs in dx/docs/
+description: Add or update swag annotations on Echo handlers and regenerate the OpenAPI/Swagger docs in docs/
 ---
 
 Manage Swagger/OpenAPI documentation for this project. The project uses `swaggo/swag` with Echo v5.
@@ -10,12 +10,12 @@ Manage Swagger/OpenAPI documentation for this project. The project uses `swaggo/
 After adding/updating swag annotations, always regenerate:
 
 ```bash
-go tool swag init -g cmd/http/main.go -o dx/docs/
+go tool swag init -g cmd/http/main.go -o docs/
 go build ./...
 ```
 
 The `-g` flag points to the file with `@title`, `@version`, `@host`, `@BasePath` annotations.
-Output goes to `dx/docs/` (swagger.yaml, swagger.json, docs.go).
+Output goes to `docs/` (swagger.yaml, swagger.json, docs.go — gitignored).
 
 ## Handler annotation template
 
@@ -30,16 +30,16 @@ Place annotations immediately above each handler function:
 //  @Accept       json
 //  @Produce      json
 //  @Param        id    path      string                     true   "Resource ID"
-//  @Param        body  body      dto.CreateXxxRequest       true   "Request body"
+//  @Param        body  body      CreateXxxRequest           true   "Request body"
 //  @Param        page  query     int                        false  "Page number"
-//  @Success      201   {object}  <Domain>
-//  @Success      200   {array}   <Domain>
+//  @Success      201   {object}  <domain>.<Domain>
+//  @Success      200   {array}   <domain>.<Domain>
 //  @Failure      400   {object}  map[string]string
 //  @Failure      404   {object}  map[string]string
 //  @Failure      422   {object}  map[string]string
 //  @Failure      500   {object}  map[string]string
 //  @Router       /<domain>s [post]
-func (ctrl *Controller) createXxxHandler(c *echo.Context) error {
+func (h *Handler) createXxxHandler(c *echo.Context) error {
 ```
 
 ## Status code conventions
@@ -50,7 +50,7 @@ func (ctrl *Controller) createXxxHandler(c *echo.Context) error {
 | 201 | POST (created) |
 | 204 | DELETE (no body) |
 | 400 | Malformed JSON (`c.Bind` error) |
-| 404 | Resource not found (`errNotFound`) |
+| 404 | Resource not found (`<domain>.ErrNotFound`) |
 | 422 | Validation failure (`c.Validate` error) |
 | 500 | Unexpected service/DB error |
 
@@ -69,7 +69,7 @@ These are already set — only update if the API version or base path changes:
 
 ## `example` tags on structs
 
-Add `example` struct tags on entity fields and DTOs so Swagger UI shows realistic payloads:
+Add `example` struct tags on entity fields (in `domain/<domain>/entity.go`) and DTOs so Swagger UI shows realistic payloads:
 
 ```go
 type User struct {

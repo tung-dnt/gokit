@@ -32,7 +32,7 @@ The agent will read all relevant files and produce a structured review.
 ### 2. HTTP responses
 
 - [ ] Bind error → 400 `{"error": "invalid request body"}`
-- [ ] Validate error → return `err` (pkg/validator handles 422)
+- [ ] Validate error → return `err` (infra/validator handles 422)
 - [ ] Not found → 404 `{"error": "<domain> not found"}`
 - [ ] Service error → 500 `{"error": "internal error"}` — NOT `err.Error()` (info leakage)
 
@@ -52,7 +52,7 @@ The agent will read all relevant files and produce a structured review.
 - [ ] All HTTP status codes documented (`@Success`, `@Failure`)
 - [ ] Entity structs have `example` tags on all fields
 - [ ] DTO structs have `example` tags on all fields
-- [ ] `make swagger` regenerated without errors (dx/docs/ updated)
+- [ ] `make swagger` regenerated without errors (docs/ updated)
 
 ### 5. Security (OWASP API Top 10)
 

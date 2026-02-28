@@ -1,6 +1,6 @@
 ---
 name: update-perf-tests
-description: Post-implementation perf gate. Updates dx/scripts/k6/perf-test.js for newly added REST endpoints and runs make perf. Invoke with `/update-perf-tests` after implementing new API endpoints.
+description: Post-implementation perf gate. Updates scripts/k6/perf-test.js for newly added REST endpoints and runs make perf. Invoke with `/update-perf-tests` after implementing new API endpoints.
 user-invocable: true
 ---
 
@@ -34,7 +34,7 @@ Wait for the user's response before proceeding.
 
 ### Step 2 — Read current perf test file
 
-Read the current state of `dx/scripts/k6/perf-test.js` using the Read tool.
+Read the current state of `scripts/k6/perf-test.js` using the Read tool.
 
 Identify:
 - Existing Trend metric names (to avoid duplicates)
@@ -51,7 +51,7 @@ Invoke the `perf-test-writer` agent, providing:
 - The current file content (so the agent can see exact insertion points)
 - The request body fields (for POST/PUT seed data generation)
 
-The agent will update `dx/scripts/k6/perf-test.js` with:
+The agent will update `scripts/k6/perf-test.js` with:
 - New Trend metric declarations
 - New scenario blocks in `options.scenarios`
 - New threshold entries in `options.thresholds`

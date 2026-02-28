@@ -4,15 +4,15 @@ description: Echo v5 handler pipeline, error responses, and validation patterns 
 user_invocable: false
 ---
 
-Reference for Echo v5 HTTP handler patterns used across all `biz/<domain>/` modules.
+Reference for Echo v5 HTTP handler patterns used across all `infra/http/<domain>hdl/` packages.
 
 ## Handler Signature
 
 ```go
-func (ctrl *Controller) xxxHandler(c echo.Context) error
+func (h *Handler) xxxHandler(c *echo.Context) error
 ```
 
-All handlers are **unexported** methods on `*Controller`.
+All handlers are **unexported** methods on `*Handler`.
 
 ## Handler Pipeline
 
@@ -27,26 +27,26 @@ c.Bind(&req) → c.Validate(&req) → service call → c.JSON(status, response)
 | Step | HTTP Status | Response |
 |------|-------------|----------|
 | `c.Bind` fails | **400** | `{"error": "invalid request body"}` |
-| `c.Validate` fails | **422** | Auto-handled by `pkg/validator` — returns field-level details |
-| `errNotFound` from service | **404** | `{"error": "<domain> not found"}` |
+| `c.Validate` fails | **422** | Auto-handled by `infra/validator` — returns field-level details |
+| `<domain>.ErrNotFound` from service | **404** | `{"error": "<domain> not found"}` |
 | Unexpected error | **500** | `{"error": "internal error"}` — log full error with slog |
 
 ### Code Examples
 
 ```go
 // Bind error → 400
-var req dto.CreateXxxRequest
+var req CreateXxxRequest
 if err := c.Bind(&req); err != nil {
     return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 }
 
-// Validate error → 422 (just return err, pkg/validator handles it)
+// Validate error → 422 (just return err, infra/validator handles it)
 if err := c.Validate(&req); err != nil {
     return err
 }
 
-// Not found → 404
-if errors.Is(err, errNotFound) {
+// Not found → 404 (using exported domain sentinel)
+if errors.Is(err, <domain>.ErrNotFound) {
     return c.JSON(http.StatusNotFound, map[string]string{"error": "xxx not found"})
 }
 
@@ -59,8 +59,8 @@ return c.JSON(http.StatusInternalServerError, map[string]string{"error": "intern
 
 - Use **go-playground/validator** tags on DTOs: `validate:"required,min=1,max=100"`
 - **NOT** manual `Valid()` method
-- `c.Validate(&req)` triggers automatic 422 response via `pkg/validator/validator.go`
-- DTOs live in `biz/<domain>/dto/dto.go` with both `validate` and `example` tags
+- `c.Validate(&req)` triggers automatic 422 response via `infra/validator/validator.go`
+- DTOs live in `infra/http/<domain>hdl/dto.go` with both `validate` and `example` tags
 
 ## Rules
 

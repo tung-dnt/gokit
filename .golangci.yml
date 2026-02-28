@@ -47,7 +47,8 @@ linters:
 
   exclusions:
     paths:
-      - dx/docs  # auto-generated swagger docs; swaggo header doesn't match Go generated-file standard
+      - docs              # auto-generated swagger docs
+      - infra/sqlite/db   # sqlc-generated code
     rules:
       - path: '_test\.go'
         linters: [bodyclose, errcheck, noctx, wrapcheck]

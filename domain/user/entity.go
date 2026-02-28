@@ -1,11 +1,7 @@
+// Package user defines the core domain types for user management.
 package user
 
-import (
-	"errors"
-	"time"
-)
-
-var errNotFound = errors.New("user: not found")
+import "time"
 
 // User is the core domain entity.
 type User struct {
@@ -15,12 +11,14 @@ type User struct {
 	CreatedAt time.Time `json:"created_at" example:"2024-01-01T00:00:00Z"`
 }
 
-type createUserInput struct {
+// CreateUserInput carries the fields needed to create a new user.
+type CreateUserInput struct {
 	Name  string
 	Email string
 }
 
-type updateUserInput struct {
+// UpdateUserInput carries the fields that may be changed on an existing user.
+type UpdateUserInput struct {
 	Name  string
 	Email string
 }

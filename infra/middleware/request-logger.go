@@ -8,7 +8,7 @@ import (
 
 	"github.com/labstack/echo/v5"
 
-	"restful-boilerplate/pkg/logger"
+	"restful-boilerplate/infra/logger"
 )
 
 // RequestLog emits a structured JSON log line per request with method, path,

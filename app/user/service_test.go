@@ -5,21 +5,19 @@ import (
 	"encoding/hex"
 	"errors"
 	"testing"
-	"time"
 
 	"go.opentelemetry.io/otel/trace/noop"
 
-	testutil "restful-boilerplate/dx/test"
-	sqlitedb "restful-boilerplate/repo/sqlite/db"
+	"restful-boilerplate/domain/user"
+	"restful-boilerplate/infra/sqlite/userrepo"
+	testutil "restful-boilerplate/infra/testutil"
 )
 
-func newTestService(t *testing.T) *userService {
+func newTestService(t *testing.T) *Service {
 	t.Helper()
 	db := testutil.SetupTestDB(t)
-	return &userService{
-		q:      sqlitedb.New(db),
-		tracer: noop.NewTracerProvider().Tracer("test"),
-	}
+	repo := userrepo.NewSQLite(db)
+	return NewService(repo, noop.NewTracerProvider().Tracer("test"))
 }
 
 func TestCreateUser(t *testing.T) {
@@ -27,9 +25,9 @@ func TestCreateUser(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()
 
-	u, err := svc.createUser(ctx, createUserInput{Name: "Alice", Email: "alice@example.com"})
+	u, err := svc.CreateUser(ctx, user.CreateUserInput{Name: "Alice", Email: "alice@example.com"})
 	if err != nil {
-		t.Fatalf("createUser() error = %v", err)
+		t.Fatalf("CreateUser() error = %v", err)
 	}
 	if u.ID == "" {
 		t.Error("expected non-empty ID")
@@ -53,12 +51,12 @@ func TestCreateUser_DuplicateEmail(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()
 
-	_, err := svc.createUser(ctx, createUserInput{Name: "Alice", Email: "dup@example.com"})
+	_, err := svc.CreateUser(ctx, user.CreateUserInput{Name: "Alice", Email: "dup@example.com"})
 	if err != nil {
-		t.Fatalf("first createUser() error = %v", err)
+		t.Fatalf("first CreateUser() error = %v", err)
 	}
 
-	_, err = svc.createUser(ctx, createUserInput{Name: "Bob", Email: "dup@example.com"})
+	_, err = svc.CreateUser(ctx, user.CreateUserInput{Name: "Bob", Email: "dup@example.com"})
 	if err == nil {
 		t.Fatal("expected error for duplicate email")
 	}
@@ -69,9 +67,9 @@ func TestListUsers_Empty(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()
 
-	users, err := svc.listUsers(ctx)
+	users, err := svc.ListUsers(ctx)
 	if err != nil {
-		t.Fatalf("listUsers() error = %v", err)
+		t.Fatalf("ListUsers() error = %v", err)
 	}
 	if users == nil {
 		t.Fatal("expected non-nil slice for empty result")
@@ -86,12 +84,12 @@ func TestListUsers_Multiple(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()
 
-	_, _ = svc.createUser(ctx, createUserInput{Name: "Alice", Email: "alice@example.com"})
-	_, _ = svc.createUser(ctx, createUserInput{Name: "Bob", Email: "bob@example.com"})
+	_, _ = svc.CreateUser(ctx, user.CreateUserInput{Name: "Alice", Email: "alice@example.com"})
+	_, _ = svc.CreateUser(ctx, user.CreateUserInput{Name: "Bob", Email: "bob@example.com"})
 
-	users, err := svc.listUsers(ctx)
+	users, err := svc.ListUsers(ctx)
 	if err != nil {
-		t.Fatalf("listUsers() error = %v", err)
+		t.Fatalf("ListUsers() error = %v", err)
 	}
 	if len(users) != 2 {
 		t.Errorf("expected 2 users, got %d", len(users))
@@ -103,11 +101,11 @@ func TestGetUserByID_Found(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()
 
-	created, _ := svc.createUser(ctx, createUserInput{Name: "Alice", Email: "alice@example.com"})
+	created, _ := svc.CreateUser(ctx, user.CreateUserInput{Name: "Alice", Email: "alice@example.com"})
 
-	u, err := svc.getUserByID(ctx, created.ID)
+	u, err := svc.GetUserByID(ctx, created.ID)
 	if err != nil {
-		t.Fatalf("getUserByID() error = %v", err)
+		t.Fatalf("GetUserByID() error = %v", err)
 	}
 	if u.ID != created.ID {
 		t.Errorf("ID = %q, want %q", u.ID, created.ID)
@@ -122,9 +120,9 @@ func TestGetUserByID_NotFound(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()
 
-	_, err := svc.getUserByID(ctx, "nonexistent")
-	if !errors.Is(err, errNotFound) {
-		t.Errorf("expected errNotFound, got %v", err)
+	_, err := svc.GetUserByID(ctx, "nonexistent")
+	if !errors.Is(err, user.ErrNotFound) {
+		t.Errorf("expected ErrNotFound, got %v", err)
 	}
 }
 
@@ -133,11 +131,11 @@ func TestUpdateUser_BothFields(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()
 
-	created, _ := svc.createUser(ctx, createUserInput{Name: "Alice", Email: "alice@example.com"})
+	created, _ := svc.CreateUser(ctx, user.CreateUserInput{Name: "Alice", Email: "alice@example.com"})
 
-	u, err := svc.updateUser(ctx, created.ID, updateUserInput{Name: "Bob", Email: "bob@example.com"})
+	u, err := svc.UpdateUser(ctx, created.ID, user.UpdateUserInput{Name: "Bob", Email: "bob@example.com"})
 	if err != nil {
-		t.Fatalf("updateUser() error = %v", err)
+		t.Fatalf("UpdateUser() error = %v", err)
 	}
 	if u.Name != "Bob" {
 		t.Errorf("Name = %q, want %q", u.Name, "Bob")
@@ -152,11 +150,11 @@ func TestUpdateUser_NameOnly(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()
 
-	created, _ := svc.createUser(ctx, createUserInput{Name: "Alice", Email: "alice@example.com"})
+	created, _ := svc.CreateUser(ctx, user.CreateUserInput{Name: "Alice", Email: "alice@example.com"})
 
-	u, err := svc.updateUser(ctx, created.ID, updateUserInput{Name: "Bob"})
+	u, err := svc.UpdateUser(ctx, created.ID, user.UpdateUserInput{Name: "Bob"})
 	if err != nil {
-		t.Fatalf("updateUser() error = %v", err)
+		t.Fatalf("UpdateUser() error = %v", err)
 	}
 	if u.Name != "Bob" {
 		t.Errorf("Name = %q, want %q", u.Name, "Bob")
@@ -171,11 +169,11 @@ func TestUpdateUser_EmailOnly(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()
 
-	created, _ := svc.createUser(ctx, createUserInput{Name: "Alice", Email: "alice@example.com"})
+	created, _ := svc.CreateUser(ctx, user.CreateUserInput{Name: "Alice", Email: "alice@example.com"})
 
-	u, err := svc.updateUser(ctx, created.ID, updateUserInput{Email: "new@example.com"})
+	u, err := svc.UpdateUser(ctx, created.ID, user.UpdateUserInput{Email: "new@example.com"})
 	if err != nil {
-		t.Fatalf("updateUser() error = %v", err)
+		t.Fatalf("UpdateUser() error = %v", err)
 	}
 	if u.Name != "Alice" {
 		t.Errorf("Name should be preserved, got %q", u.Name)
@@ -190,11 +188,11 @@ func TestUpdateUser_EmptyInput(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()
 
-	created, _ := svc.createUser(ctx, createUserInput{Name: "Alice", Email: "alice@example.com"})
+	created, _ := svc.CreateUser(ctx, user.CreateUserInput{Name: "Alice", Email: "alice@example.com"})
 
-	u, err := svc.updateUser(ctx, created.ID, updateUserInput{})
+	u, err := svc.UpdateUser(ctx, created.ID, user.UpdateUserInput{})
 	if err != nil {
-		t.Fatalf("updateUser() error = %v", err)
+		t.Fatalf("UpdateUser() error = %v", err)
 	}
 	if u.Name != "Alice" {
 		t.Errorf("Name = %q, want %q", u.Name, "Alice")
@@ -209,9 +207,9 @@ func TestUpdateUser_NotFound(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()
 
-	_, err := svc.updateUser(ctx, "nonexistent", updateUserInput{Name: "Bob"})
-	if !errors.Is(err, errNotFound) {
-		t.Errorf("expected errNotFound, got %v", err)
+	_, err := svc.UpdateUser(ctx, "nonexistent", user.UpdateUserInput{Name: "Bob"})
+	if !errors.Is(err, user.ErrNotFound) {
+		t.Errorf("expected ErrNotFound, got %v", err)
 	}
 }
 
@@ -220,16 +218,16 @@ func TestDeleteUser_Success(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()
 
-	created, _ := svc.createUser(ctx, createUserInput{Name: "Alice", Email: "alice@example.com"})
+	created, _ := svc.CreateUser(ctx, user.CreateUserInput{Name: "Alice", Email: "alice@example.com"})
 
-	if err := svc.deleteUser(ctx, created.ID); err != nil {
-		t.Fatalf("deleteUser() error = %v", err)
+	if err := svc.DeleteUser(ctx, created.ID); err != nil {
+		t.Fatalf("DeleteUser() error = %v", err)
 	}
 
 	// Verify user is gone.
-	_, err := svc.getUserByID(ctx, created.ID)
-	if !errors.Is(err, errNotFound) {
-		t.Errorf("expected errNotFound after delete, got %v", err)
+	_, err := svc.GetUserByID(ctx, created.ID)
+	if !errors.Is(err, user.ErrNotFound) {
+		t.Errorf("expected ErrNotFound after delete, got %v", err)
 	}
 }
 
@@ -238,9 +236,9 @@ func TestDeleteUser_NotFound(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()
 
-	err := svc.deleteUser(ctx, "nonexistent")
-	if !errors.Is(err, errNotFound) {
-		t.Errorf("expected errNotFound, got %v", err)
+	err := svc.DeleteUser(ctx, "nonexistent")
+	if !errors.Is(err, user.ErrNotFound) {
+		t.Errorf("expected ErrNotFound, got %v", err)
 	}
 }
 
@@ -266,26 +264,5 @@ func TestGenerateID_Unique(t *testing.T) {
 	id2, _ := generateID()
 	if id1 == id2 {
 		t.Errorf("expected unique IDs, got %q twice", id1)
-	}
-}
-
-func TestToUser(t *testing.T) {
-	t.Parallel()
-
-	now := time.Now().UTC()
-	row := sqlitedb.User{ID: "abc123", Name: "Alice", Email: "alice@example.com", CreatedAt: now}
-	u := toUser(row)
-
-	if u.ID != "abc123" {
-		t.Errorf("ID = %q, want %q", u.ID, "abc123")
-	}
-	if u.Name != "Alice" {
-		t.Errorf("Name = %q, want %q", u.Name, "Alice")
-	}
-	if u.Email != "alice@example.com" {
-		t.Errorf("Email = %q, want %q", u.Email, "alice@example.com")
-	}
-	if !u.CreatedAt.Equal(now) {
-		t.Errorf("CreatedAt = %v, want %v", u.CreatedAt, now)
 	}
 }

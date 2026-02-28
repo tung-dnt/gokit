@@ -2,6 +2,6 @@ bin/
 *.db
 *.db-shm
 *.db-wal
-dx/docs/
+docs/
 *tmp
 logs/

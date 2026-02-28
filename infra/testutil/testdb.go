@@ -8,7 +8,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	sqlite "restful-boilerplate/repo/sqlite"
+	sqlite "restful-boilerplate/infra/sqlite"
 )
 
 // SetupTestDB opens an in-memory SQLite database, applies all migrations,

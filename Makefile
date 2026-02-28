@@ -9,7 +9,7 @@ BIN_DIR  := bin
 API_BIN  := $(BIN_DIR)/api
 WORK_BIN := $(BIN_DIR)/worker
 DB_PATH  := ./data.db
-OBS_DIR  := dx/deploy
+OBS_DIR  := deploy
 
 # ─── Help ────────────────────────────────────────────────────────────────────
 
@@ -37,7 +37,7 @@ worker: ## Run background worker
 
 .PHONY: migrate
 migrate: ## Apply DB migrations (default: ./data.db)
-	go run ./repo/sqlite/migrations -db $(DB_PATH)
+	go run ./cmd/migrate -db $(DB_PATH)
 
 # ─── Build ───────────────────────────────────────────────────────────────────
 
@@ -97,7 +97,7 @@ sqlc: ## Regenerate sqlc Go code from SQL queries
 
 .PHONY: swagger
 swagger: ## Regenerate OpenAPI/Swagger docs
-	go tool swag init -g cmd/http/main.go -o dx/docs/
+	go tool swag init -g cmd/http/main.go -o docs/
 
 # ─── Performance testing ─────────────────────────────────────────────────────
 
@@ -107,7 +107,7 @@ PERF_URL ?= http://host.docker.internal:8080
 
 .PHONY: perf
 perf: ## Run k6 performance tests via Docker (BASE_URL=http://... to override)
-	@bash dx/scripts/perf-test.sh $(PERF_URL)
+	@bash scripts/perf-test.sh $(PERF_URL)
 
 # ─── Observability stack ─────────────────────────────────────────────────────
 

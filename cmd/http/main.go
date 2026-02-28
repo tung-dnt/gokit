@@ -8,25 +8,31 @@ import (
 	"strings"
 	"time"
 
-	"restful-boilerplate/biz/user"
-	_ "restful-boilerplate/dx/docs"
-	"restful-boilerplate/pkg/config"
-	"restful-boilerplate/pkg/metrics"
-	"restful-boilerplate/pkg/middleware"
-	"restful-boilerplate/pkg/otelecho"
-	"restful-boilerplate/pkg/telemetry"
-	cv "restful-boilerplate/pkg/validator"
-	sqlitedb "restful-boilerplate/repo/sqlite"
+	"go.opentelemetry.io/otel"
+	_ "modernc.org/sqlite"
 
 	"github.com/labstack/echo/v5"
 	echomw "github.com/labstack/echo/v5/middleware"
 	echoSwagger "github.com/swaggo/echo-swagger"
-	_ "modernc.org/sqlite"
+
+	"restful-boilerplate/app/user"
+	_ "restful-boilerplate/docs"
+	"restful-boilerplate/infra/config"
+	"restful-boilerplate/infra/http/userhdl"
+	"restful-boilerplate/infra/metrics"
+	"restful-boilerplate/infra/middleware"
+	"restful-boilerplate/infra/otelecho"
+	infradb "restful-boilerplate/infra/sqlite"
+	"restful-boilerplate/infra/sqlite/userrepo"
+	"restful-boilerplate/infra/telemetry"
+	cv "restful-boilerplate/infra/validator"
 )
 
 func registerRouters(g *echo.Group, db *sql.DB) {
-	user.NewController(db).RegisterRoutes(g.Group("/users"))
-	// add new domains: xxx.NewController(db).RegisterRoutes(g.Group("/xxx"))
+	userRepo := userrepo.NewSQLite(db)
+	userSvc := user.NewService(userRepo, otel.Tracer("user"))
+	userhdl.NewHandler(userSvc).RegisterRoutes(g.Group("/users"))
+	// add new domains: follow the same pattern above
 }
 
 // @title          Restful Boilerplate API
@@ -44,7 +50,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	db, err := sqlitedb.OpenDB(ctx, "./data.db")
+	db, err := infradb.OpenDB(ctx, "./data.db")
 	if err != nil {
 		slog.Error("failed to open database", "error", err)
 		stopTracing()

@@ -16,13 +16,13 @@ Reference for the observability stack: tracing, logging, metrics, and the Docker
 | Prometheus | Metrics scraper | Internal only |
 | Grafana | Visualization | `http://localhost:3000` |
 
-Docker Compose lives in `dx/deploy/`. Manage with `make obs/up` and `make obs/down`.
+Docker Compose lives in `deploy/`. Manage with `make obs/up` and `make obs/down`.
 Grafana datasource UIDs are fixed: `tempo` and `loki` (enables cross-correlation in provisioning).
 
-## Tracing — `pkg/telemetry/`
+## Tracing — `infra/telemetry/`
 
-- `pkg/telemetry/otel.go` — OTLP HTTP TracerProvider
-- `pkg/telemetry/setup.go` — `SetupAll(ctx, logPath)` initializes tracer + log file
+- `infra/telemetry/otel.go` — OTLP HTTP TracerProvider
+- `infra/telemetry/setup.go` — `SetupAll(ctx, logPath)` initializes tracer + log file
 - Reads `OTEL_EXPORTER_OTLP_ENDPOINT` env var (default: `http://localhost:4318` in dev)
 - **Tracer as struct field** — store `tracer trace.Tracer` on service structs to avoid `gochecknoglobals` linter
 
@@ -33,19 +33,19 @@ type xxxService struct {
 }
 ```
 
-## Echo v5 OTEL Middleware — `pkg/otelecho/`
+## Echo v5 OTEL Middleware — `infra/otelecho/`
 
-- `pkg/otelecho/middleware.go` — custom middleware (official `otelecho` only supports Echo v4)
+- `infra/otelecho/middleware.go` — custom middleware (official `otelecho` only supports Echo v4)
 - Injects `trace_id` + `span_id` into request context
 - **Echo v5 quirk:** use `echo.UnwrapResponse(c.Response())` to get `*echo.Response` with `.Status` field — `c.Response()` returns plain `http.ResponseWriter`
 
-## Structured Logging — `pkg/logger/`
+## Structured Logging — `infra/logger/`
 
-- `pkg/logger/logger.go` — slog MultiWriter (stdout + `./logs/app.log`)
+- `infra/logger/logger.go` — slog MultiWriter (stdout + `./logs/app.log`)
 - `logger.FromContext(ctx)` returns trace-correlated `slog.Logger` (includes `trace_id` + `span_id`)
 - JSON output format for machine parsing
 
-## Metrics — `pkg/metrics/`
+## Metrics — `infra/metrics/`
 
-- `pkg/metrics/metrics.go` — Prometheus registry
+- `infra/metrics/metrics.go` — Prometheus registry
 - Exposes `/metrics` endpoint for Prometheus scraping

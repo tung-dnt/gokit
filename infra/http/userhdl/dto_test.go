@@ -1,4 +1,4 @@
-package dto
+package userhdl
 
 import (
 	"errors"

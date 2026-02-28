@@ -1,4 +1,4 @@
-package user
+package userhdl
 
 import (
 	"context"
@@ -9,26 +9,32 @@ import (
 	"testing"
 
 	"github.com/labstack/echo/v5"
+	"go.opentelemetry.io/otel/trace/noop"
 
-	testutil "restful-boilerplate/dx/test"
-	cv "restful-boilerplate/pkg/validator"
+	usersvc "restful-boilerplate/app/user"
+	"restful-boilerplate/domain/user"
+	"restful-boilerplate/infra/sqlite/userrepo"
+	testutil "restful-boilerplate/infra/testutil"
+	cv "restful-boilerplate/infra/validator"
 )
 
 // newTestEcho sets up an Echo instance with validator and user routes backed by in-memory SQLite.
-func newTestEcho(t *testing.T) (*echo.Echo, *Controller) {
+func newTestEcho(t *testing.T) (*echo.Echo, *usersvc.Service) {
 	t.Helper()
 	db := testutil.SetupTestDB(t)
+	repo := userrepo.NewSQLite(db)
+	svc := usersvc.NewService(repo, noop.NewTracerProvider().Tracer("test"))
+
 	e := echo.New()
 	e.Validator = cv.New()
-	ctrl := NewController(db)
-	ctrl.RegisterRoutes(e.Group("/users"))
-	return e, ctrl
+	NewHandler(svc).RegisterRoutes(e.Group("/users"))
+	return e, svc
 }
 
 // seedUser creates a user via the service and returns it.
-func seedUser(t *testing.T, svc *userService, name, email string) *User {
+func seedUser(t *testing.T, svc *usersvc.Service, name, email string) *user.User {
 	t.Helper()
-	u, err := svc.createUser(context.Background(), createUserInput{Name: name, Email: email})
+	u, err := svc.CreateUser(context.Background(), user.CreateUserInput{Name: name, Email: email})
 	if err != nil {
 		t.Fatalf("seed user: %v", err)
 	}
@@ -52,7 +58,7 @@ func TestCreateUser_HTTP_Success(t *testing.T) {
 		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusCreated, rec.Body.String())
 	}
 
-	var u User
+	var u user.User
 	if err := json.Unmarshal(rec.Body.Bytes(), &u); err != nil {
 		t.Fatalf("unmarshal response: %v", err)
 	}
@@ -161,7 +167,7 @@ func TestListUsers_HTTP_Empty(t *testing.T) {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
 	}
 
-	var users []User
+	var users []user.User
 	if err := json.Unmarshal(rec.Body.Bytes(), &users); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
@@ -172,10 +178,10 @@ func TestListUsers_HTTP_Empty(t *testing.T) {
 
 func TestListUsers_HTTP_WithData(t *testing.T) {
 	t.Parallel()
-	e, ctrl := newTestEcho(t)
+	e, svc := newTestEcho(t)
 
-	seedUser(t, ctrl.svc, "Alice", "alice@example.com")
-	seedUser(t, ctrl.svc, "Bob", "bob@example.com")
+	seedUser(t, svc, "Alice", "alice@example.com")
+	seedUser(t, svc, "Bob", "bob@example.com")
 
 	req := httptest.NewRequest(http.MethodGet, "/users", nil)
 	rec := httptest.NewRecorder()
@@ -186,7 +192,7 @@ func TestListUsers_HTTP_WithData(t *testing.T) {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
 	}
 
-	var users []User
+	var users []user.User
 	if err := json.Unmarshal(rec.Body.Bytes(), &users); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
@@ -199,9 +205,9 @@ func TestListUsers_HTTP_WithData(t *testing.T) {
 
 func TestGetUserByID_HTTP_Found(t *testing.T) {
 	t.Parallel()
-	e, ctrl := newTestEcho(t)
+	e, svc := newTestEcho(t)
 
-	u := seedUser(t, ctrl.svc, "Alice", "alice@example.com")
+	u := seedUser(t, svc, "Alice", "alice@example.com")
 
 	req := httptest.NewRequest(http.MethodGet, "/users/"+u.ID, nil)
 	rec := httptest.NewRecorder()
@@ -212,7 +218,7 @@ func TestGetUserByID_HTTP_Found(t *testing.T) {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
 	}
 
-	var got User
+	var got user.User
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
@@ -239,9 +245,9 @@ func TestGetUserByID_HTTP_NotFound(t *testing.T) {
 
 func TestUpdateUser_HTTP_BothFields(t *testing.T) {
 	t.Parallel()
-	e, ctrl := newTestEcho(t)
+	e, svc := newTestEcho(t)
 
-	u := seedUser(t, ctrl.svc, "Alice", "alice@example.com")
+	u := seedUser(t, svc, "Alice", "alice@example.com")
 
 	body := `{"name":"Bob","email":"bob@example.com"}`
 	req := httptest.NewRequest(http.MethodPut, "/users/"+u.ID, strings.NewReader(body))
@@ -254,7 +260,7 @@ func TestUpdateUser_HTTP_BothFields(t *testing.T) {
 		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusOK, rec.Body.String())
 	}
 
-	var got User
+	var got user.User
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
@@ -268,9 +274,9 @@ func TestUpdateUser_HTTP_BothFields(t *testing.T) {
 
 func TestUpdateUser_HTTP_NameOnly(t *testing.T) {
 	t.Parallel()
-	e, ctrl := newTestEcho(t)
+	e, svc := newTestEcho(t)
 
-	u := seedUser(t, ctrl.svc, "Alice", "alice@example.com")
+	u := seedUser(t, svc, "Alice", "alice@example.com")
 
 	body := `{"name":"Bob"}`
 	req := httptest.NewRequest(http.MethodPut, "/users/"+u.ID, strings.NewReader(body))
@@ -283,7 +289,7 @@ func TestUpdateUser_HTTP_NameOnly(t *testing.T) {
 		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusOK, rec.Body.String())
 	}
 
-	var got User
+	var got user.User
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
@@ -297,9 +303,9 @@ func TestUpdateUser_HTTP_NameOnly(t *testing.T) {
 
 func TestUpdateUser_HTTP_MalformedJSON(t *testing.T) {
 	t.Parallel()
-	e, ctrl := newTestEcho(t)
+	e, svc := newTestEcho(t)
 
-	u := seedUser(t, ctrl.svc, "Alice", "alice@example.com")
+	u := seedUser(t, svc, "Alice", "alice@example.com")
 
 	req := httptest.NewRequest(http.MethodPut, "/users/"+u.ID, strings.NewReader(`{bad`))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
@@ -314,9 +320,9 @@ func TestUpdateUser_HTTP_MalformedJSON(t *testing.T) {
 
 func TestUpdateUser_HTTP_InvalidEmail(t *testing.T) {
 	t.Parallel()
-	e, ctrl := newTestEcho(t)
+	e, svc := newTestEcho(t)
 
-	u := seedUser(t, ctrl.svc, "Alice", "alice@example.com")
+	u := seedUser(t, svc, "Alice", "alice@example.com")
 
 	body := `{"email":"not-an-email"}`
 	req := httptest.NewRequest(http.MethodPut, "/users/"+u.ID, strings.NewReader(body))
@@ -350,9 +356,9 @@ func TestUpdateUser_HTTP_NotFound(t *testing.T) {
 
 func TestDeleteUser_HTTP_Success(t *testing.T) {
 	t.Parallel()
-	e, ctrl := newTestEcho(t)
+	e, svc := newTestEcho(t)
 
-	u := seedUser(t, ctrl.svc, "Alice", "alice@example.com")
+	u := seedUser(t, svc, "Alice", "alice@example.com")
 
 	req := httptest.NewRequest(http.MethodDelete, "/users/"+u.ID, nil)
 	rec := httptest.NewRecorder()

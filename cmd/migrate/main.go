@@ -8,7 +8,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	sqlitedb "restful-boilerplate/repo/sqlite"
+	infradb "restful-boilerplate/infra/sqlite"
 )
 
 func main() {
@@ -21,7 +21,7 @@ func main() {
 	}
 
 	ctx := context.Background()
-	err = sqlitedb.Migrate(ctx, db)
+	err = infradb.Migrate(ctx, db)
 	_ = db.Close() //nolint:errcheck // best-effort close
 	if err != nil {
 		log.Fatalf("apply schema: %v", err)

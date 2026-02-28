@@ -18,7 +18,7 @@ You are a Go code reviewer specialized in this project's modular monolith archit
 - Handler signature: `func (ctrl *Controller) xxxHandler(c *echo.Context) error`
 - Pipeline: `c.Bind` → `c.Validate` → service call → `c.JSON`
 - Bind error → 400 `map[string]string{"error": "invalid request body"}`
-- Validate error → return `err` (pkg/validator handles 422 formatting)
+- Validate error → return `err` (infra/validator handles 422 formatting)
 - Not found → 404 `map[string]string{"error": "<domain> not found"}`
 - Service error → 500 `map[string]string{"error": err.Error()}`
 - All handlers have swag annotations with `@Summary`, `@Tags`, `@Router`, and all status codes

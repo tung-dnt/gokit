@@ -1,12 +1,12 @@
 version: "2"
 sql:
   - engine: "sqlite"
-    queries: "repo/sqlite/queries"
-    schema: "repo/sqlite/migrations"
+    queries: "infra/sqlite/queries"
+    schema: "infra/sqlite/migrations"
     gen:
       go:
-        package: "sqlite"
-        out: "repo/sqlite/db"
+        package: "sqlitedb"
+        out: "infra/sqlite/db"
         overrides:
           - db_type: "DATETIME"
             go_type: "time.Time"

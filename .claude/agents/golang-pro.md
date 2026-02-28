@@ -122,7 +122,7 @@ if err := c.Bind(&req); err != nil {
     return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 }
 if err := c.Validate(&req); err != nil {
-    return err  // pkg/validator sends 422 with field details automatically
+    return err  // infra/validator sends 422 with field details automatically
 }
 
 // Service: business rule validation only (uniqueness, state transitions)

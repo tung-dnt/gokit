@@ -23,8 +23,8 @@ go build ./...
 ## Run lint on a specific package
 
 ```bash
-golangci-lint run ./biz/user/...
-golangci-lint run ./pkg/...
+golangci-lint run ./domain/user/...
+golangci-lint run ./infra/...
 ```
 
 ## Run lint with verbose output (shows which linter triggered each issue)
@@ -64,7 +64,7 @@ Only suppress if you have verified the error can be safely ignored.
 - `cyclop`: max complexity 15, package average 10.0
 - `gocognit`: max cognitive complexity 15
 - `gosec`: security checks (excludes G115)
-- `gochecknoglobals`: no package-level vars (except in dx/docs/)
+- `gochecknoglobals`: no package-level vars (except in docs/)
 - `exhaustive`: all enum switch cases covered
 - `contextcheck`: context passed correctly throughout call chains
 

@@ -1,11 +1,12 @@
-package user
+package userhdl
 
 import (
 	"errors"
 	"net/http"
 
 	"github.com/labstack/echo/v5"
-	"restful-boilerplate/biz/user/dto"
+
+	"restful-boilerplate/domain/user"
 )
 
 // listUsersHandler returns all users.
@@ -13,11 +14,11 @@ import (
 //	@Summary      List users
 //	@Tags         users
 //	@Produce      json
-//	@Success      200  {array}   User
+//	@Success      200  {array}   user.User
 //	@Failure      500  {object}  map[string]string
 //	@Router       /users [get]
-func (ctrl *Controller) listUsersHandler(c *echo.Context) error {
-	users, err := ctrl.svc.listUsers(c.Request().Context())
+func (h *Handler) listUsersHandler(c *echo.Context) error {
+	users, err := h.svc.ListUsers(c.Request().Context())
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
@@ -30,21 +31,21 @@ func (ctrl *Controller) listUsersHandler(c *echo.Context) error {
 //	@Tags         users
 //	@Accept       json
 //	@Produce      json
-//	@Param        body  body      dto.CreateUserRequest  true  "User data"
-//	@Success      201   {object}  User
+//	@Param        body  body      CreateUserRequest  true  "User data"
+//	@Success      201   {object}  user.User
 //	@Failure      400   {object}  map[string]string
 //	@Failure      422   {object}  map[string]string
 //	@Failure      500   {object}  map[string]string
 //	@Router       /users [post]
-func (ctrl *Controller) createUserHandler(c *echo.Context) error {
-	var req dto.CreateUserRequest
+func (h *Handler) createUserHandler(c *echo.Context) error {
+	var req CreateUserRequest
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 	}
 	if err := c.Validate(&req); err != nil {
 		return err
 	}
-	u, err := ctrl.svc.createUser(c.Request().Context(), createUserInput{Name: req.Name, Email: req.Email})
+	u, err := h.svc.CreateUser(c.Request().Context(), user.CreateUserInput{Name: req.Name, Email: req.Email})
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
@@ -57,14 +58,14 @@ func (ctrl *Controller) createUserHandler(c *echo.Context) error {
 //	@Tags         users
 //	@Produce      json
 //	@Param        id   path      string  true  "User ID"
-//	@Success      200  {object}  User
+//	@Success      200  {object}  user.User
 //	@Failure      404  {object}  map[string]string
 //	@Failure      500  {object}  map[string]string
 //	@Router       /users/{id} [get]
-func (ctrl *Controller) getUserByIDHandler(c *echo.Context) error {
-	u, err := ctrl.svc.getUserByID(c.Request().Context(), c.Param("id"))
+func (h *Handler) getUserByIDHandler(c *echo.Context) error {
+	u, err := h.svc.GetUserByID(c.Request().Context(), c.Param("id"))
 	if err != nil {
-		if errors.Is(err, errNotFound) {
+		if errors.Is(err, user.ErrNotFound) {
 			return c.JSON(http.StatusNotFound, map[string]string{"error": "user not found"})
 		}
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
@@ -78,24 +79,24 @@ func (ctrl *Controller) getUserByIDHandler(c *echo.Context) error {
 //	@Tags         users
 //	@Accept       json
 //	@Produce      json
-//	@Param        id    path      string                 true  "User ID"
-//	@Param        body  body      dto.UpdateUserRequest  true  "User data"
-//	@Success      200   {object}  User
+//	@Param        id    path      string             true  "User ID"
+//	@Param        body  body      UpdateUserRequest  true  "User data"
+//	@Success      200   {object}  user.User
 //	@Failure      400   {object}  map[string]string
 //	@Failure      404   {object}  map[string]string
 //	@Failure      500   {object}  map[string]string
 //	@Router       /users/{id} [put]
-func (ctrl *Controller) updateUserHandler(c *echo.Context) error {
-	var req dto.UpdateUserRequest
+func (h *Handler) updateUserHandler(c *echo.Context) error {
+	var req UpdateUserRequest
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 	}
 	if err := c.Validate(&req); err != nil {
 		return err
 	}
-	u, err := ctrl.svc.updateUser(c.Request().Context(), c.Param("id"), updateUserInput{Name: req.Name, Email: req.Email})
+	u, err := h.svc.UpdateUser(c.Request().Context(), c.Param("id"), user.UpdateUserInput{Name: req.Name, Email: req.Email})
 	if err != nil {
-		if errors.Is(err, errNotFound) {
+		if errors.Is(err, user.ErrNotFound) {
 			return c.JSON(http.StatusNotFound, map[string]string{"error": "user not found"})
 		}
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
@@ -113,9 +114,9 @@ func (ctrl *Controller) updateUserHandler(c *echo.Context) error {
 //	@Failure      404  {object}  map[string]string
 //	@Failure      500  {object}  map[string]string
 //	@Router       /users/{id} [delete]
-func (ctrl *Controller) deleteUserHandler(c *echo.Context) error {
-	if err := ctrl.svc.deleteUser(c.Request().Context(), c.Param("id")); err != nil {
-		if errors.Is(err, errNotFound) {
+func (h *Handler) deleteUserHandler(c *echo.Context) error {
+	if err := h.svc.DeleteUser(c.Request().Context(), c.Param("id")); err != nil {
+		if errors.Is(err, user.ErrNotFound) {
 			return c.JSON(http.StatusNotFound, map[string]string{"error": "user not found"})
 		}
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
