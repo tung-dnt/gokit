@@ -2,47 +2,37 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"log/slog"
+	"net"
+	"net/http"
 	"os"
-	"strings"
+	"os/signal"
 	"time"
 
 	"go.opentelemetry.io/otel"
 	_ "modernc.org/sqlite"
 
-	"github.com/labstack/echo/v5"
-	echomw "github.com/labstack/echo/v5/middleware"
-	echoSwagger "github.com/swaggo/echo-swagger"
-
-	"restful-boilerplate/app/user"
-	_ "restful-boilerplate/docs"
+	useradapter "restful-boilerplate/adapter/user"
+	"restful-boilerplate/domain/user"
 	"restful-boilerplate/infra/config"
-	"restful-boilerplate/infra/http/userhdl"
+	router "restful-boilerplate/infra/http"
 	"restful-boilerplate/infra/metrics"
-	"restful-boilerplate/infra/middleware"
-	"restful-boilerplate/infra/otelecho"
+	requestlogger "restful-boilerplate/infra/middleware"
+	"restful-boilerplate/infra/otelhttp"
 	infradb "restful-boilerplate/infra/sqlite"
-	"restful-boilerplate/infra/sqlite/userrepo"
 	"restful-boilerplate/infra/telemetry"
 	cv "restful-boilerplate/infra/validator"
 )
 
-func registerRouters(g *echo.Group, db *sql.DB) {
-	userRepo := userrepo.NewSQLite(db)
-	userSvc := user.NewService(userRepo, otel.Tracer("user"))
-	userhdl.NewHandler(userSvc).RegisterRoutes(g.Group("/users"))
-	// add new domains: follow the same pattern above
-}
-
 // @title          Restful Boilerplate API
 // @version        1.0
-// @description    Go RESTful API boilerplate built on Echo v5 + SQLite.
+// @description    Go RESTful API boilerplate built on net/http + SQLite.
 // @host           localhost:8080
 // @BasePath       /api
 // @schemes        http
 func main() {
-	ctx := context.Background()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
 
 	stopTracing, err := telemetry.SetupAll(ctx, "./logs/app.log")
 	if err != nil {
@@ -60,31 +50,29 @@ func main() {
 	// All early-exit paths done; defers are safe from here.
 	defer stopTracing()
 	defer db.Close() //nolint:errcheck // best-effort close on exit
+	v := cv.New()
 
-	e := echo.New()
-	e.Validator = cv.New()
-	metrics.Register(e)
+	r := router.NewRouter()
+	r.Prefix("/api")
+	r.Use(otelhttp.Middleware("restful-boilerplate"))
+	r.Use(requestlogger.RequestLog)
+	r.Use(requestlogger.Recovery)
+	r.Route("GET /metrics", metrics.Handler())
 
-	e.Use(otelecho.Middleware("restful-boilerplate"))
-	e.Use(middleware.RequestLog)
-	e.Use(echomw.Recover())
-	e.Use(echomw.ContextTimeout(5 * time.Second))
-	e.Use(echomw.GzipWithConfig(echomw.GzipConfig{Level: 5}))
-	e.Use(echomw.Secure())
-	e.Use(echomw.CSRFWithConfig(echomw.CSRFConfig{
-		Skipper: func(c *echo.Context) bool {
-			return strings.HasPrefix((*c).Request().URL.Path, "/swagger")
-		},
-	}))
-
-	registerRouters(e.Group("/api"), db)
-	e.GET("/swagger/*", echoSwagger.WrapHandler)
-	e.GET("/swagger", func(c *echo.Context) error {
-		return (*c).Redirect(301, "/swagger/index.html")
-	})
+	// User domain register
+	userRepo := useradapter.NewSQLite(db)
+	userSvc := user.NewService(userRepo, otel.Tracer("user"))
+	r.Group("/users", useradapter.NewHandler(userSvc, v).RegisterRoutes)
 
 	cfg := config.Load(os.Getenv).Server
-	if err = e.Start(cfg.Host + ":" + cfg.Port); err != nil {
-		e.Logger.Error("failed to start server", "error", err)
+	addr := net.JoinHostPort(cfg.Host, cfg.Port)
+	httpServer := &http.Server{
+		Addr:         addr,
+		Handler:      r.Handler,
+		ReadTimeout:  cfg.ReadTimeout,
+		WriteTimeout: cfg.WriteTimeout,
+		IdleTimeout:  cfg.IdleTimeout,
 	}
+
+	router.GracefulServe(ctx, httpServer, 10*time.Second)
 }

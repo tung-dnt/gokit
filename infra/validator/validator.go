@@ -10,7 +10,7 @@ import (
 	"github.com/go-playground/validator/v10"
 )
 
-// CustomValidator wraps go-playground/validator for use with Echo's Validator interface.
+// CustomValidator wraps go-playground/validator for struct-level validation.
 type CustomValidator struct {
 	validator *validator.Validate
 }
@@ -47,8 +47,7 @@ func (cv *CustomValidator) Validate(i any) error {
 }
 
 // ValidationError holds field-level validation failures.
-// It implements error, echo.HTTPStatusCoder, and json.Marshaler so Echo v5's
-// default error handler serialises it as structured JSON with status 422.
+// It implements error and json.Marshaler for structured JSON error output.
 type ValidationError struct {
 	fields map[string]string
 }
@@ -56,7 +55,7 @@ type ValidationError struct {
 // Error implements the error interface.
 func (e *ValidationError) Error() string { return "validation failed" }
 
-// StatusCode implements echo.HTTPStatusCoder to produce HTTP 422.
+// StatusCode returns HTTP 422 Unprocessable Entity.
 func (e *ValidationError) StatusCode() int { return http.StatusUnprocessableEntity }
 
 // MarshalJSON implements json.Marshaler for structured error output.

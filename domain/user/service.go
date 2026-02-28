@@ -12,23 +12,22 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 
-	"restful-boilerplate/domain/user"
 	"restful-boilerplate/infra/logger"
 )
 
-// Service orchestrates user use-cases on top of a Repository.
-type Service struct {
-	repo   user.Repository
+// UserSvc orchestrates user use-cases on top of a Repository.
+type UserSvc struct {
+	repo   Repository
 	tracer trace.Tracer
 }
 
 // NewService creates a Service backed by repo and traced via tracer.
-func NewService(repo user.Repository, tracer trace.Tracer) *Service {
-	return &Service{repo: repo, tracer: tracer}
+func NewService(repo Repository, tracer trace.Tracer) *UserSvc {
+	return &UserSvc{repo: repo, tracer: tracer}
 }
 
 // CreateUser creates a new user from the given input.
-func (s *Service) CreateUser(ctx context.Context, in user.CreateUserInput) (*user.User, error) {
+func (s *UserSvc) CreateUser(ctx context.Context, in CreateUserInput) (*User, error) {
 	ctx, span := s.tracer.Start(ctx, "user.CreateUser")
 	defer span.End()
 
@@ -41,7 +40,7 @@ func (s *Service) CreateUser(ctx context.Context, in user.CreateUserInput) (*use
 		return nil, fmt.Errorf("generate id: %w", err)
 	}
 
-	u := &user.User{
+	u := &User{
 		ID: id, Name: in.Name, Email: in.Email, CreatedAt: time.Now().UTC(),
 	}
 	if err = s.repo.Create(ctx, u); err != nil {
@@ -53,7 +52,7 @@ func (s *Service) CreateUser(ctx context.Context, in user.CreateUserInput) (*use
 }
 
 // ListUsers returns all users.
-func (s *Service) ListUsers(ctx context.Context) ([]*user.User, error) {
+func (s *UserSvc) ListUsers(ctx context.Context) ([]*User, error) {
 	ctx, span := s.tracer.Start(ctx, "user.ListUsers")
 	defer span.End()
 
@@ -66,8 +65,8 @@ func (s *Service) ListUsers(ctx context.Context) ([]*user.User, error) {
 	return users, nil
 }
 
-// GetUserByID returns a single user or user.ErrNotFound.
-func (s *Service) GetUserByID(ctx context.Context, id string) (*user.User, error) {
+// GetUserByID returns a single user or ErrNotFound.
+func (s *UserSvc) GetUserByID(ctx context.Context, id string) (*User, error) {
 	ctx, span := s.tracer.Start(ctx, "user.GetUserByID")
 	defer span.End()
 
@@ -83,7 +82,7 @@ func (s *Service) GetUserByID(ctx context.Context, id string) (*user.User, error
 }
 
 // UpdateUser applies a partial update to the user identified by id.
-func (s *Service) UpdateUser(ctx context.Context, id string, in user.UpdateUserInput) (*user.User, error) {
+func (s *UserSvc) UpdateUser(ctx context.Context, id string, in UpdateUserInput) (*User, error) {
 	ctx, span := s.tracer.Start(ctx, "user.UpdateUser")
 	defer span.End()
 
@@ -107,8 +106,8 @@ func (s *Service) UpdateUser(ctx context.Context, id string, in user.UpdateUserI
 	return existing, nil
 }
 
-// DeleteUser removes a user by id or returns user.ErrNotFound.
-func (s *Service) DeleteUser(ctx context.Context, id string) error {
+// DeleteUser removes a user by id or returns ErrNotFound.
+func (s *UserSvc) DeleteUser(ctx context.Context, id string) error {
 	ctx, span := s.tracer.Start(ctx, "user.DeleteUser")
 	defer span.End()
 
@@ -131,5 +130,5 @@ func generateID() (string, error) {
 }
 
 func isNotFound(err error) bool {
-	return err != nil && err == user.ErrNotFound
+	return err != nil && err == ErrNotFound
 }

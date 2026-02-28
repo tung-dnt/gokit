@@ -1,4 +1,4 @@
-package userhdl
+package user
 
 import (
 	"errors"

@@ -4,10 +4,7 @@ go 1.26.0
 
 require (
 	github.com/go-playground/validator/v10 v10.30.1
-	github.com/labstack/echo-contrib/v5 v5.0.1
-	github.com/labstack/echo/v5 v5.0.4
 	github.com/prometheus/client_golang v1.23.2
-	github.com/swaggo/echo-swagger v1.5.0
 	github.com/swaggo/swag v1.16.6
 	go.opentelemetry.io/otel v1.40.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.40.0
@@ -197,7 +194,6 @@ require (
 	github.com/pingcap/failpoint v0.0.0-20240528011301-b51a646c7c86 // indirect
 	github.com/pingcap/log v1.1.0 // indirect
 	github.com/pingcap/tidb/pkg/parser v0.0.0-20250324122243-d51e00e5bbf0 // indirect
-	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/common v0.67.5 // indirect
@@ -237,9 +233,6 @@ require (
 	github.com/stretchr/objx v0.5.2 // indirect
 	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/subosito/gotenv v1.4.1 // indirect
-	github.com/sv-tools/openapi v0.2.1 // indirect
-	github.com/swaggo/files/v2 v2.0.0 // indirect
-	github.com/swaggo/swag/v2 v2.0.0-rc4 // indirect
 	github.com/tdewolff/parse/v2 v2.8.3 // indirect
 	github.com/tetafro/godot v1.5.4 // indirect
 	github.com/tetratelabs/wazero v1.9.0 // indirect
@@ -282,7 +275,6 @@ require (
 	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/sys v0.41.0 // indirect
 	golang.org/x/text v0.34.0 // indirect
-	golang.org/x/time v0.14.0 // indirect
 	golang.org/x/tools v0.42.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260128011058-8636f8732409 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260128011058-8636f8732409 // indirect

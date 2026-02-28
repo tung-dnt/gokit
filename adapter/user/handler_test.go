@@ -1,4 +1,4 @@
-package userhdl
+package user
 
 import (
 	"context"
@@ -8,31 +8,30 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/labstack/echo/v5"
 	"go.opentelemetry.io/otel/trace/noop"
 
-	usersvc "restful-boilerplate/app/user"
 	"restful-boilerplate/domain/user"
-	"restful-boilerplate/infra/sqlite/userrepo"
-	testutil "restful-boilerplate/infra/testutil"
+	router "restful-boilerplate/infra/http"
+	"restful-boilerplate/infra/testutil"
 	cv "restful-boilerplate/infra/validator"
 )
 
-// newTestEcho sets up an Echo instance with validator and user routes backed by in-memory SQLite.
-func newTestEcho(t *testing.T) (*echo.Echo, *usersvc.Service) {
+// newTestHandler sets up an http.Handler with user routes backed by in-memory SQLite.
+func newTestHandler(t *testing.T) (http.Handler, *user.UserSvc) {
 	t.Helper()
 	db := testutil.SetupTestDB(t)
-	repo := userrepo.NewSQLite(db)
-	svc := usersvc.NewService(repo, noop.NewTracerProvider().Tracer("test"))
+	repo := NewSQLite(db)
+	svc := user.NewService(repo, noop.NewTracerProvider().Tracer("test"))
 
-	e := echo.New()
-	e.Validator = cv.New()
-	NewHandler(svc).RegisterRoutes(e.Group("/users"))
-	return e, svc
+	srv := router.NewRouter()
+	srv.Group("/users", func(g *router.Group) {
+		NewHandler(svc, cv.New()).RegisterRoutes(g)
+	})
+	return srv.Handler, svc
 }
 
 // seedUser creates a user via the service and returns it.
-func seedUser(t *testing.T, svc *usersvc.Service, name, email string) *user.User {
+func seedUser(t *testing.T, svc *user.UserSvc, name, email string) *user.User {
 	t.Helper()
 	u, err := svc.CreateUser(context.Background(), user.CreateUserInput{Name: name, Email: email})
 	if err != nil {
@@ -41,18 +40,18 @@ func seedUser(t *testing.T, svc *usersvc.Service, name, email string) *user.User
 	return u
 }
 
-// --- POST /users ---
+// --- POST /users/ ---
 
 func TestCreateUser_HTTP_Success(t *testing.T) {
 	t.Parallel()
-	e, _ := newTestEcho(t)
+	h, _ := newTestHandler(t)
 
 	body := `{"name":"Alice","email":"alice@example.com"}`
-	req := httptest.NewRequest(http.MethodPost, "/users", strings.NewReader(body))
-	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	req := httptest.NewRequest(http.MethodPost, "/users/", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 
-	e.ServeHTTP(rec, req)
+	h.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusCreated, rec.Body.String())
@@ -75,13 +74,13 @@ func TestCreateUser_HTTP_Success(t *testing.T) {
 
 func TestCreateUser_HTTP_MalformedJSON(t *testing.T) {
 	t.Parallel()
-	e, _ := newTestEcho(t)
+	h, _ := newTestHandler(t)
 
-	req := httptest.NewRequest(http.MethodPost, "/users", strings.NewReader(`{invalid`))
-	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	req := httptest.NewRequest(http.MethodPost, "/users/", strings.NewReader(`{invalid`))
+	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 
-	e.ServeHTTP(rec, req)
+	h.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("status = %d, want %d", rec.Code, http.StatusBadRequest)
@@ -90,14 +89,14 @@ func TestCreateUser_HTTP_MalformedJSON(t *testing.T) {
 
 func TestCreateUser_HTTP_MissingName(t *testing.T) {
 	t.Parallel()
-	e, _ := newTestEcho(t)
+	h, _ := newTestHandler(t)
 
 	body := `{"email":"alice@example.com"}`
-	req := httptest.NewRequest(http.MethodPost, "/users", strings.NewReader(body))
-	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	req := httptest.NewRequest(http.MethodPost, "/users/", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 
-	e.ServeHTTP(rec, req)
+	h.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusUnprocessableEntity {
 		t.Errorf("status = %d, want %d; body: %s", rec.Code, http.StatusUnprocessableEntity, rec.Body.String())
@@ -106,14 +105,14 @@ func TestCreateUser_HTTP_MissingName(t *testing.T) {
 
 func TestCreateUser_HTTP_MissingEmail(t *testing.T) {
 	t.Parallel()
-	e, _ := newTestEcho(t)
+	h, _ := newTestHandler(t)
 
 	body := `{"name":"Alice"}`
-	req := httptest.NewRequest(http.MethodPost, "/users", strings.NewReader(body))
-	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	req := httptest.NewRequest(http.MethodPost, "/users/", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 
-	e.ServeHTTP(rec, req)
+	h.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusUnprocessableEntity {
 		t.Errorf("status = %d, want %d; body: %s", rec.Code, http.StatusUnprocessableEntity, rec.Body.String())
@@ -122,14 +121,14 @@ func TestCreateUser_HTTP_MissingEmail(t *testing.T) {
 
 func TestCreateUser_HTTP_InvalidEmail(t *testing.T) {
 	t.Parallel()
-	e, _ := newTestEcho(t)
+	h, _ := newTestHandler(t)
 
 	body := `{"name":"Alice","email":"not-an-email"}`
-	req := httptest.NewRequest(http.MethodPost, "/users", strings.NewReader(body))
-	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	req := httptest.NewRequest(http.MethodPost, "/users/", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 
-	e.ServeHTTP(rec, req)
+	h.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusUnprocessableEntity {
 		t.Errorf("status = %d, want %d; body: %s", rec.Code, http.StatusUnprocessableEntity, rec.Body.String())
@@ -138,30 +137,30 @@ func TestCreateUser_HTTP_InvalidEmail(t *testing.T) {
 
 func TestCreateUser_HTTP_NameTooLong(t *testing.T) {
 	t.Parallel()
-	e, _ := newTestEcho(t)
+	h, _ := newTestHandler(t)
 
 	body := `{"name":"` + strings.Repeat("a", 101) + `","email":"alice@example.com"}`
-	req := httptest.NewRequest(http.MethodPost, "/users", strings.NewReader(body))
-	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	req := httptest.NewRequest(http.MethodPost, "/users/", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 
-	e.ServeHTTP(rec, req)
+	h.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusUnprocessableEntity {
 		t.Errorf("status = %d, want %d; body: %s", rec.Code, http.StatusUnprocessableEntity, rec.Body.String())
 	}
 }
 
-// --- GET /users ---
+// --- GET /users/ ---
 
 func TestListUsers_HTTP_Empty(t *testing.T) {
 	t.Parallel()
-	e, _ := newTestEcho(t)
+	h, _ := newTestHandler(t)
 
-	req := httptest.NewRequest(http.MethodGet, "/users", nil)
+	req := httptest.NewRequest(http.MethodGet, "/users/", nil)
 	rec := httptest.NewRecorder()
 
-	e.ServeHTTP(rec, req)
+	h.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
@@ -178,15 +177,15 @@ func TestListUsers_HTTP_Empty(t *testing.T) {
 
 func TestListUsers_HTTP_WithData(t *testing.T) {
 	t.Parallel()
-	e, svc := newTestEcho(t)
+	h, svc := newTestHandler(t)
 
 	seedUser(t, svc, "Alice", "alice@example.com")
 	seedUser(t, svc, "Bob", "bob@example.com")
 
-	req := httptest.NewRequest(http.MethodGet, "/users", nil)
+	req := httptest.NewRequest(http.MethodGet, "/users/", nil)
 	rec := httptest.NewRecorder()
 
-	e.ServeHTTP(rec, req)
+	h.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
@@ -201,18 +200,18 @@ func TestListUsers_HTTP_WithData(t *testing.T) {
 	}
 }
 
-// --- GET /users/:id ---
+// --- GET /users/{id} ---
 
 func TestGetUserByID_HTTP_Found(t *testing.T) {
 	t.Parallel()
-	e, svc := newTestEcho(t)
+	h, svc := newTestHandler(t)
 
 	u := seedUser(t, svc, "Alice", "alice@example.com")
 
 	req := httptest.NewRequest(http.MethodGet, "/users/"+u.ID, nil)
 	rec := httptest.NewRecorder()
 
-	e.ServeHTTP(rec, req)
+	h.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
@@ -229,32 +228,32 @@ func TestGetUserByID_HTTP_Found(t *testing.T) {
 
 func TestGetUserByID_HTTP_NotFound(t *testing.T) {
 	t.Parallel()
-	e, _ := newTestEcho(t)
+	h, _ := newTestHandler(t)
 
 	req := httptest.NewRequest(http.MethodGet, "/users/nonexistent", nil)
 	rec := httptest.NewRecorder()
 
-	e.ServeHTTP(rec, req)
+	h.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("status = %d, want %d", rec.Code, http.StatusNotFound)
 	}
 }
 
-// --- PUT /users/:id ---
+// --- PUT /users/{id} ---
 
 func TestUpdateUser_HTTP_BothFields(t *testing.T) {
 	t.Parallel()
-	e, svc := newTestEcho(t)
+	h, svc := newTestHandler(t)
 
 	u := seedUser(t, svc, "Alice", "alice@example.com")
 
 	body := `{"name":"Bob","email":"bob@example.com"}`
 	req := httptest.NewRequest(http.MethodPut, "/users/"+u.ID, strings.NewReader(body))
-	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 
-	e.ServeHTTP(rec, req)
+	h.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusOK, rec.Body.String())
@@ -274,16 +273,16 @@ func TestUpdateUser_HTTP_BothFields(t *testing.T) {
 
 func TestUpdateUser_HTTP_NameOnly(t *testing.T) {
 	t.Parallel()
-	e, svc := newTestEcho(t)
+	h, svc := newTestHandler(t)
 
 	u := seedUser(t, svc, "Alice", "alice@example.com")
 
 	body := `{"name":"Bob"}`
 	req := httptest.NewRequest(http.MethodPut, "/users/"+u.ID, strings.NewReader(body))
-	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 
-	e.ServeHTTP(rec, req)
+	h.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusOK, rec.Body.String())
@@ -303,15 +302,15 @@ func TestUpdateUser_HTTP_NameOnly(t *testing.T) {
 
 func TestUpdateUser_HTTP_MalformedJSON(t *testing.T) {
 	t.Parallel()
-	e, svc := newTestEcho(t)
+	h, svc := newTestHandler(t)
 
 	u := seedUser(t, svc, "Alice", "alice@example.com")
 
 	req := httptest.NewRequest(http.MethodPut, "/users/"+u.ID, strings.NewReader(`{bad`))
-	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 
-	e.ServeHTTP(rec, req)
+	h.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("status = %d, want %d", rec.Code, http.StatusBadRequest)
@@ -320,16 +319,16 @@ func TestUpdateUser_HTTP_MalformedJSON(t *testing.T) {
 
 func TestUpdateUser_HTTP_InvalidEmail(t *testing.T) {
 	t.Parallel()
-	e, svc := newTestEcho(t)
+	h, svc := newTestHandler(t)
 
 	u := seedUser(t, svc, "Alice", "alice@example.com")
 
 	body := `{"email":"not-an-email"}`
 	req := httptest.NewRequest(http.MethodPut, "/users/"+u.ID, strings.NewReader(body))
-	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 
-	e.ServeHTTP(rec, req)
+	h.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusUnprocessableEntity {
 		t.Errorf("status = %d, want %d; body: %s", rec.Code, http.StatusUnprocessableEntity, rec.Body.String())
@@ -338,32 +337,32 @@ func TestUpdateUser_HTTP_InvalidEmail(t *testing.T) {
 
 func TestUpdateUser_HTTP_NotFound(t *testing.T) {
 	t.Parallel()
-	e, _ := newTestEcho(t)
+	h, _ := newTestHandler(t)
 
 	body := `{"name":"Bob"}`
 	req := httptest.NewRequest(http.MethodPut, "/users/nonexistent", strings.NewReader(body))
-	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 
-	e.ServeHTTP(rec, req)
+	h.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("status = %d, want %d", rec.Code, http.StatusNotFound)
 	}
 }
 
-// --- DELETE /users/:id ---
+// --- DELETE /users/{id} ---
 
 func TestDeleteUser_HTTP_Success(t *testing.T) {
 	t.Parallel()
-	e, svc := newTestEcho(t)
+	h, svc := newTestHandler(t)
 
 	u := seedUser(t, svc, "Alice", "alice@example.com")
 
 	req := httptest.NewRequest(http.MethodDelete, "/users/"+u.ID, nil)
 	rec := httptest.NewRecorder()
 
-	e.ServeHTTP(rec, req)
+	h.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusNoContent {
 		t.Errorf("status = %d, want %d", rec.Code, http.StatusNoContent)
@@ -372,12 +371,12 @@ func TestDeleteUser_HTTP_Success(t *testing.T) {
 
 func TestDeleteUser_HTTP_NotFound(t *testing.T) {
 	t.Parallel()
-	e, _ := newTestEcho(t)
+	h, _ := newTestHandler(t)
 
 	req := httptest.NewRequest(http.MethodDelete, "/users/nonexistent", nil)
 	rec := httptest.NewRecorder()
 
-	e.ServeHTTP(rec, req)
+	h.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("status = %d, want %d", rec.Code, http.StatusNotFound)

@@ -1,5 +1,5 @@
 // Package userrepo implements domain/user.Repository backed by SQLite.
-package userrepo
+package user
 
 import (
 	"context"

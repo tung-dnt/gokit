@@ -1,32 +1,51 @@
-// Package middlewares wires all application-level Echo middlewares in priority order.
-package middleware
+// Package requestlogger provides HTTP request logging middleware.
+package requestlogger
 
 import (
 	"log/slog"
 	"net/http"
 	"time"
 
-	"github.com/labstack/echo/v5"
-
 	"restful-boilerplate/infra/logger"
 )
 
-// RequestLog emits a structured JSON log line per request with method, path,
-// status code, latency, and — when a span is active — trace_id and span_id.
-func RequestLog(next echo.HandlerFunc) echo.HandlerFunc {
-	return func(c *echo.Context) error {
+// RequestLog returns a net/http middleware that emits a structured JSON log line
+// per request with method, path, status code, latency, and — when a span is
+// active — trace_id and span_id.
+func RequestLog(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
-		err := next(c)
-		status := http.StatusOK
-		if resp, uErr := echo.UnwrapResponse(c.Response()); uErr == nil {
-			status = resp.Status
+		sw := &statusWriter{ResponseWriter: w}
+
+		next.ServeHTTP(sw, r)
+
+		status := sw.status
+		if status == 0 {
+			status = http.StatusOK
 		}
-		logger.FromContext(c.Request().Context()).Info("request",
-			slog.String("method", c.Request().Method),
-			slog.String("path", c.Path()),
+		logger.FromContext(r.Context()).Info("request",
+			slog.String("method", r.Method),
+			slog.String("path", r.URL.Path),
 			slog.Int("status", status),
 			slog.Duration("latency", time.Since(start)),
 		)
-		return err
+	})
+}
+
+// statusWriter wraps http.ResponseWriter to capture the status code.
+type statusWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (w *statusWriter) WriteHeader(code int) {
+	w.status = code
+	w.ResponseWriter.WriteHeader(code)
+}
+
+func (w *statusWriter) Write(b []byte) (int, error) {
+	if w.status == 0 {
+		w.status = http.StatusOK
 	}
+	return w.ResponseWriter.Write(b)
 }
