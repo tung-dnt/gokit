@@ -18,10 +18,10 @@ import (
 	"restful-boilerplate/domain/user"
 	"restful-boilerplate/infra/config"
 	router "restful-boilerplate/infra/http"
+	"restful-boilerplate/infra/logger"
 	"restful-boilerplate/infra/metrics"
-	requestlogger "restful-boilerplate/infra/logger"
- "restful-boilerplate/infra/recovery"
 	"restful-boilerplate/infra/otelhttp"
+	"restful-boilerplate/infra/recovery"
 	infradb "restful-boilerplate/infra/sqlite"
 	"restful-boilerplate/infra/telemetry"
 	cv "restful-boilerplate/infra/validator"
@@ -62,7 +62,7 @@ func main() {
 	r.Prefix("/api")
 	r.Use(metric.Middleware)
 	r.Use(otelhttp.Middleware("restful-boilerplate"))
-	r.Use(requestlogger.Middleware)
+	r.Use(logger.Middleware)
 	r.Use(recovery.Middleware)
 	r.Router.Handle("GET /metrics", metric.Handler())
 	r.Router.Handle("/swagger/", httpSwagger.WrapHandler)

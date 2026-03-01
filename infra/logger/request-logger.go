@@ -1,12 +1,9 @@
-// Package requestlogger provides HTTP request logging middleware.
-package requestlogger
+package logger
 
 import (
 	"log/slog"
 	"net/http"
 	"time"
-
-	"restful-boilerplate/infra/logger"
 )
 
 // Middleware returns a net/http middleware that emits a structured JSON log line
@@ -23,7 +20,7 @@ func Middleware(next http.Handler) http.Handler {
 		if status == 0 {
 			status = http.StatusOK
 		}
-		logger.FromContext(r.Context()).Info("request",
+		FromContext(r.Context()).Info("request",
 			slog.String("method", r.Method),
 			slog.String("path", r.URL.Path),
 			slog.Int("status", status),
