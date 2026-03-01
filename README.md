@@ -15,7 +15,7 @@ make migrate
 make dev
 ```
 
-The API is available at `http://localhost:8080/api`. Swagger UI at `http://localhost:8080/swagger/`.
+The API is available at `http://localhost:4040/api`. Swagger UI at `http://localhost:4040/swagger/`.
 
 ## Stack
 

@@ -12,7 +12,7 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 
-	"restful-boilerplate/infra/logger"
+	logger "restful-boilerplate/infra/logger"
 )
 
 // Svc orchestrates user use-cases on top of a Repository.

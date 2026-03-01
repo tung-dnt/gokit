@@ -103,7 +103,7 @@ swagger: ## Regenerate OpenAPI/Swagger docs
 
 ##@ Performance
 
-PERF_URL ?= http://host.docker.internal:8080
+PERF_URL ?= http://host.docker.internal:4040
 
 .PHONY: perf
 perf: ## Run k6 performance tests via Docker (BASE_URL=http://... to override)

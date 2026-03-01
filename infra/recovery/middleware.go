@@ -1,4 +1,4 @@
-package requestlogger
+package recovery 
 
 import (
 	"fmt"
@@ -8,7 +8,7 @@ import (
 
 // Recovery returns a middleware that recovers from panics, logs the error,
 // and responds with 500 Internal Server Error.
-func Recovery(next http.Handler) http.Handler {
+func Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if rec := recover(); rec != nil {

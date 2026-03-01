@@ -7,11 +7,11 @@
 #
 # Examples:
 #   ./scripts/perf-test.sh
-#   ./scripts/perf-test.sh http://host.docker.internal:8080
+#   ./scripts/perf-test.sh http://host.docker.internal:4040
 # ──────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
-BASE_URL="${1:-http://host.docker.internal:8080}"
+BASE_URL="${1:-http://host.docker.internal:4040}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 K6_SCRIPT="$SCRIPT_DIR/k6/perf-test.js"
 

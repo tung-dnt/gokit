@@ -9,10 +9,10 @@ import (
 	"restful-boilerplate/infra/logger"
 )
 
-// RequestLog returns a net/http middleware that emits a structured JSON log line
+// Middleware returns a net/http middleware that emits a structured JSON log line
 // per request with method, path, status code, latency, and — when a span is
 // active — trace_id and span_id.
-func RequestLog(next http.Handler) http.Handler {
+func Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		sw := &statusWriter{ResponseWriter: w}
