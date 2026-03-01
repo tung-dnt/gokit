@@ -34,7 +34,7 @@ adapter/
 infra/
   http/                    → Router wrapper for net/http ServeMux
     router.go              → Router struct + NewRouter + Prefix + Use + Group + Route
-    group.go               → Group struct + HandleFunc + prefixPattern
+    group.go               → Group struct + Use (group middleware) + Handle/HandleFunc/Route + nested Group + prefixPattern
     util.go                → WriteJSON helper
     serve.go               → GracefulServe (graceful shutdown)
   sqlite/                  → SQLite connection + migration infra
@@ -107,8 +107,9 @@ To add a new domain: run `/new-domain` — it creates all files across the layer
 - **Context:** All service/repo methods accept `ctx context.Context` as first parameter.
 - **Structured logging:** `infra/logger` — slog with JSON output. `logger.FromContext(ctx)` for trace-correlated logger.
 - **OTEL tracing:** Store tracer as struct field (not global). Use `infra/otelhttp` middleware for net/http.
-- **Middleware:** Standard `func(http.Handler) http.Handler` signature. Chained via `Router.Use()`.
-- **Route registration:** Go 1.22+ ServeMux patterns: `g.HandleFunc("GET /{id}", handler)`.
+- **Middleware:** Standard `func(http.Handler) http.Handler` signature. Chained via `Router.Use()` (global) or `Group.Use()` (group-scoped). Group middleware wraps only that group's handlers.
+- **Route registration:** Go 1.22+ ServeMux patterns: `g.HandleFunc("GET /{id}", handler)`. Groups also support `Handle` and `Route` methods.
+- **Nested groups:** `g.Group(prefix, fn)` creates sub-groups inheriting parent middleware. Add sub-group-specific middleware via `Use()` before registering routes.
 - **Path params:** `r.PathValue("id")` (stdlib).
 - **Graceful shutdown:** `router.GracefulServe(ctx, httpServer, timeout)`.
 

@@ -17,8 +17,8 @@ type Module struct {
 	val Validator
 }
 
-// NewHandler creates a Handler backed by svc with request validation via v.
-func NewHandler(svc *user.Svc, v Validator) *Module {
+// NewModule creates a Handler backed by svc with request validation via v.
+func NewModule(svc *user.Svc, v Validator) *Module {
 	return &Module{svc: svc, val: v}
 }
 

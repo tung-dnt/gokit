@@ -6,7 +6,7 @@ import (
 	"net/http"
 
 	"restful-boilerplate/domain/user"
-	router "restful-boilerplate/infra/http"
+	rt "restful-boilerplate/infra/http"
 )
 
 // listUsersHandler returns all users.
@@ -20,10 +20,10 @@ import (
 func (m *Module) listUsersHandler(w http.ResponseWriter, r *http.Request) {
 	users, err := m.svc.ListUsers(r.Context())
 	if err != nil {
-		router.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		rt.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
-	router.WriteJSON(w, http.StatusOK, users)
+	rt.WriteJSON(w, http.StatusOK, users)
 }
 
 // createUserHandler creates a new user.
@@ -41,19 +41,19 @@ func (m *Module) listUsersHandler(w http.ResponseWriter, r *http.Request) {
 func (m *Module) createUserHandler(w http.ResponseWriter, r *http.Request) {
 	var req CreateUserRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		router.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		rt.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 		return
 	}
 	if err := m.val.Validate(&req); err != nil {
-		router.WriteJSON(w, http.StatusUnprocessableEntity, err)
+		rt.WriteJSON(w, http.StatusUnprocessableEntity, err)
 		return
 	}
 	u, err := m.svc.CreateUser(r.Context(), user.CreateUserInput{Name: req.Name, Email: req.Email})
 	if err != nil {
-		router.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		rt.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
-	router.WriteJSON(w, http.StatusCreated, u)
+	rt.WriteJSON(w, http.StatusCreated, u)
 }
 
 // getUserByIDHandler gets a user by ID.
@@ -70,13 +70,13 @@ func (m *Module) getUserByIDHandler(w http.ResponseWriter, r *http.Request) {
 	u, err := m.svc.GetUserByID(r.Context(), r.PathValue("id"))
 	if err != nil {
 		if errors.Is(err, user.ErrNotFound) {
-			router.WriteJSON(w, http.StatusNotFound, map[string]string{"error": "user not found"})
+			rt.WriteJSON(w, http.StatusNotFound, map[string]string{"error": "user not found"})
 			return
 		}
-		router.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		rt.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
-	router.WriteJSON(w, http.StatusOK, u)
+	rt.WriteJSON(w, http.StatusOK, u)
 }
 
 // updateUserHandler updates a user.
@@ -95,23 +95,27 @@ func (m *Module) getUserByIDHandler(w http.ResponseWriter, r *http.Request) {
 func (m *Module) updateUserHandler(w http.ResponseWriter, r *http.Request) {
 	var req UpdateUserRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		router.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		rt.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 		return
 	}
 	if err := m.val.Validate(&req); err != nil {
-		router.WriteJSON(w, http.StatusUnprocessableEntity, err)
+		rt.WriteJSON(w, http.StatusUnprocessableEntity, err)
 		return
 	}
-	u, err := m.svc.UpdateUser(r.Context(), r.PathValue("id"), user.UpdateUserInput{Name: req.Name, Email: req.Email})
+	u, err := m.svc.UpdateUser(
+		r.Context(),
+		r.PathValue("id"),
+		user.UpdateUserInput{Name: req.Name, Email: req.Email},
+	)
 	if err != nil {
 		if errors.Is(err, user.ErrNotFound) {
-			router.WriteJSON(w, http.StatusNotFound, map[string]string{"error": "user not found"})
+			rt.WriteJSON(w, http.StatusNotFound, map[string]string{"error": "user not found"})
 			return
 		}
-		router.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		rt.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
-	router.WriteJSON(w, http.StatusOK, u)
+	rt.WriteJSON(w, http.StatusOK, u)
 }
 
 // deleteUserHandler deletes a user.
@@ -127,10 +131,10 @@ func (m *Module) updateUserHandler(w http.ResponseWriter, r *http.Request) {
 func (m *Module) deleteUserHandler(w http.ResponseWriter, r *http.Request) {
 	if err := m.svc.DeleteUser(r.Context(), r.PathValue("id")); err != nil {
 		if errors.Is(err, user.ErrNotFound) {
-			router.WriteJSON(w, http.StatusNotFound, map[string]string{"error": "user not found"})
+			rt.WriteJSON(w, http.StatusNotFound, map[string]string{"error": "user not found"})
 			return
 		}
-		router.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		rt.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

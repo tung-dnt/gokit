@@ -1,6 +1,6 @@
 # restful-boilerplate
 
-A Go RESTful API boilerplate built on **Echo v5 + SQLite + sqlc** with full observability (OpenTelemetry, Tempo, Loki, Grafana).
+A Go RESTful API boilerplate built on **stdlib + SQLite + sqlc** with full observability (OpenTelemetry, Tempo, Loki, Grafana).
 
 ## Quick Start
 

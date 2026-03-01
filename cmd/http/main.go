@@ -69,7 +69,7 @@ func main() {
 	// User domain register
 	userRepo := useradapter.NewSQLite(db)
 	userSvc := user.NewService(userRepo, otel.Tracer("user"))
-	r.Group("/users", useradapter.NewHandler(userSvc, v).RegisterRoutes)
+	r.Group("/users", useradapter.NewModule(userSvc, v).RegisterRoutes)
 
 	addr := net.JoinHostPort(cfg.Server.Host, cfg.Server.Port)
 	httpServer := &http.Server{

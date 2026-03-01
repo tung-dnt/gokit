@@ -72,6 +72,34 @@ func (m *Module) RegisterRoutes(g *router.Group) {
 }
 ```
 
+`Group` also provides `Handle(pattern, http.Handler)` and `Route(pattern, http.Handler)` for pre-built handlers.
+
+## Group-Level Middleware
+
+Groups support scoped middleware via `Use()`. Middleware added to a group wraps only that group's handlers (first added = outermost):
+
+```go
+func (m *Module) RegisterRoutes(g *router.Group) {
+    g.Use(someAuthMiddleware)  // only applies to routes in this group
+    g.HandleFunc("GET /", m.listXxxHandler)
+}
+```
+
+## Nested Groups
+
+`Group.Group(prefix, fn)` creates sub-groups that inherit the parent's middleware chain:
+
+```go
+func (m *Module) RegisterRoutes(g *router.Group) {
+    g.HandleFunc("GET /", m.listXxxHandler)       // /xxx — no extra middleware
+
+    g.Group("/admin", func(sub *router.Group) {
+        sub.Use(adminOnlyMiddleware)               // inherits parent mw + adds its own
+        sub.HandleFunc("DELETE /{id}", m.deleteXxxHandler)  // /xxx/admin/{id}
+    })
+}
+```
+
 ## Path Parameters
 
 ```go
@@ -94,12 +122,18 @@ router.WriteJSON(w, http.StatusCreated, created)
 
 ## Middleware
 
-Standard `func(http.Handler) http.Handler` signature:
+Standard `func(http.Handler) http.Handler` signature.
 
+**Global** (all routes): via `Router.Use()`:
 ```go
 r.Use(otelhttp.Middleware("restful-boilerplate"))
 r.Use(requestlogger.RequestLog)
 r.Use(requestlogger.Recovery)
+```
+
+**Group-scoped** (single group's routes): via `Group.Use()`:
+```go
+g.Use(authMiddleware) // must be added before registering routes
 ```
 
 ## Rules
