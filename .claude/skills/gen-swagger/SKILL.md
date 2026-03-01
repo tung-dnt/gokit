@@ -1,9 +1,9 @@
 ---
 name: gen-swagger
-description: Add or update swag annotations on Echo handlers and regenerate the OpenAPI/Swagger docs in docs/
+description: Add or update swag annotations on handlers and regenerate the OpenAPI/Swagger docs in docs/
 ---
 
-Manage Swagger/OpenAPI documentation for this project. The project uses `swaggo/swag` with Echo v5.
+Manage Swagger/OpenAPI documentation for this project. The project uses `swaggo/swag` with net/http handlers.
 
 ## Regenerate docs
 
@@ -39,7 +39,7 @@ Place annotations immediately above each handler function:
 //  @Failure      422   {object}  map[string]string
 //  @Failure      500   {object}  map[string]string
 //  @Router       /<domain>s [post]
-func (h *Handler) createXxxHandler(c *echo.Context) error {
+func (h *Handler) createXxxHandler(w http.ResponseWriter, r *http.Request) {
 ```
 
 ## Status code conventions
@@ -49,9 +49,9 @@ func (h *Handler) createXxxHandler(c *echo.Context) error {
 | 200 | GET (single or list), PUT |
 | 201 | POST (created) |
 | 204 | DELETE (no body) |
-| 400 | Malformed JSON (`c.Bind` error) |
+| 400 | Malformed JSON (decode error) |
 | 404 | Resource not found (`<domain>.ErrNotFound`) |
-| 422 | Validation failure (`c.Validate` error) |
+| 422 | Validation failure (`h.val.Validate` error) |
 | 500 | Unexpected service/DB error |
 
 ## Main file annotations (cmd/http/main.go)
@@ -61,7 +61,7 @@ These are already set — only update if the API version or base path changes:
 ```go
 //  @title          Restful Boilerplate API
 //  @version        1.0
-//  @description    Go RESTful API boilerplate built on Echo v5 + SQLite.
+//  @description    Go RESTful API boilerplate built on net/http + SQLite.
 //  @host           localhost:8080
 //  @BasePath       /api
 //  @schemes        http

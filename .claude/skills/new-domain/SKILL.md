@@ -1,16 +1,15 @@
 ---
 name: new-domain
-description: Scaffold a new domain following the Clean Architecture pattern (domain/ → app/ → infra/)
+description: Scaffold a new domain following the Clean Architecture pattern (domain/ → adapter/)
 ---
 
-Scaffold a new domain across all three layers. Use `user` as the reference implementation.
+Scaffold a new domain across all layers. Use `user` as the reference implementation.
 
 ## Rules
 
-- **Domain layer** (`domain/<domain>/`): Pure Go types, zero framework imports. Exported entity, input types, sentinel errors, Repository interface.
-- **App layer** (`app/<domain>svc/`): Service depends on `<domain>.Repository` interface. All methods exported. OTEL tracing lives here.
-- **Infra layer** (`infra/sqlite/<domain>repo/`): Repository adapter maps sqlc types ↔ domain types, maps `sql.ErrNoRows` → `<domain>.ErrNotFound`.
-- **HTTP adapter** (`infra/http/<domain>hdl/`): Handler wraps `*<domain>svc.Service`. DTOs with `validate` tags in same package.
+- **Domain layer** (`domain/<domain>/`): Pure Go types, zero framework imports. Exported entity, input types, sentinel errors, Repository interface, Service.
+- **Adapter layer** (`adapter/<domain>/`): HTTP handler (net/http), DTOs with `validate` tags, SQLite repository adapter.
+- **Infra layer** (`infra/sqlite/`): Migrations, sqlc queries, generated code.
 - All service/repo methods accept `ctx context.Context` as first parameter.
 - Wrap errors: `fmt.Errorf("opName: %w", err)`.
 - IDs: `crypto/rand` 8-byte hex via `generateID()` helper in service.
@@ -117,14 +116,42 @@ type Repository interface {
 }
 ```
 
----
-
-## Step 3 — Repository adapter
-
-### `infra/sqlite/<domain>repo/repository.go`
+### `domain/<domain>/service.go`
 
 ```go
-package <domain>repo
+package <domain>
+
+import (
+    "context"
+    "fmt"
+
+    "go.opentelemetry.io/otel/trace"
+)
+
+type <Domain>Svc struct {
+    repo   Repository
+    tracer trace.Tracer
+}
+
+func NewService(repo Repository, tracer trace.Tracer) *<Domain>Svc {
+    return &<Domain>Svc{repo: repo, tracer: tracer}
+}
+
+func (s *<Domain>Svc) Create<Domain>(ctx context.Context, in Create<Domain>Input) (*<Domain>, error) {
+    ctx, span := s.tracer.Start(ctx, "<domain>Svc.Create<Domain>")
+    defer span.End()
+    // ... ID generation, repo.Create, return
+}
+```
+
+---
+
+## Step 3 — Adapter layer
+
+### `adapter/<domain>/repository.go`
+
+```go
+package <domain>
 
 import (
     "context"
@@ -132,7 +159,7 @@ import (
     "errors"
     "fmt"
 
-    "restful-boilerplate/domain/<domain>"
+    domain<domain> "restful-boilerplate/domain/<domain>"
     sqlitedb "restful-boilerplate/infra/sqlite/db"
 )
 
@@ -145,7 +172,7 @@ func NewSQLite(db *sql.DB) *SQLite {
 }
 
 // Create inserts a new <domain> into SQLite.
-func (r *SQLite) Create(ctx context.Context, u *<domain>.<Domain>) error {
+func (r *SQLite) Create(ctx context.Context, u *domain<domain>.<Domain>) error {
     row, err := r.q.Create<Domain>(ctx, sqlitedb.Create<Domain>Params{
         ID: u.ID, Name: u.Name, CreatedAt: u.CreatedAt,
     })
@@ -157,51 +184,14 @@ func (r *SQLite) Create(ctx context.Context, u *<domain>.<Domain>) error {
 }
 
 // ... other methods follow same pattern
-// GetByID: map sql.ErrNoRows → <domain>.ErrNotFound
-// Delete: check RowsAffected == 0 → <domain>.ErrNotFound
+// GetByID: map sql.ErrNoRows → domain<domain>.ErrNotFound
+// Delete: check RowsAffected == 0 → domain<domain>.ErrNotFound
 ```
 
----
-
-## Step 4 — Application service
-
-### `app/<domain>svc/service.go`
+### `adapter/<domain>/dto.go`
 
 ```go
-package <domain>svc
-
-import (
-    "context"
-    "fmt"
-
-    "go.opentelemetry.io/otel/trace"
-    "restful-boilerplate/domain/<domain>"
-)
-
-type Service struct {
-    repo   <domain>.Repository
-    tracer trace.Tracer
-}
-
-func NewService(repo <domain>.Repository, tracer trace.Tracer) *Service {
-    return &Service{repo: repo, tracer: tracer}
-}
-
-func (s *Service) Create<Domain>(ctx context.Context, in <domain>.Create<Domain>Input) (*<domain>.<Domain>, error) {
-    ctx, span := s.tracer.Start(ctx, "<domain>svc.Create<Domain>")
-    defer span.End()
-    // ... ID generation, repo.Create, return
-}
-```
-
----
-
-## Step 5 — HTTP adapter
-
-### `infra/http/<domain>hdl/dto.go`
-
-```go
-package <domain>hdl
+package <domain>
 
 type Create<Domain>Request struct {
     Name string `json:"name" validate:"required,min=1,max=100" example:"Alice"`
@@ -212,70 +202,71 @@ type Update<Domain>Request struct {
 }
 ```
 
-### `infra/http/<domain>hdl/routes.go`
+### `adapter/<domain>/routes.go`
 
 ```go
-package <domain>hdl
+package <domain>
 
 import (
-    "github.com/labstack/echo/v5"
-    "restful-boilerplate/app/<domain>svc"
+    domain<domain> "restful-boilerplate/domain/<domain>"
+    router "restful-boilerplate/infra/http"
 )
 
+type Validator interface {
+    Validate(i any) error
+}
+
 type Handler struct {
-    svc *<domain>svc.Service
+    svc *domain<domain>.<Domain>Svc
+    val Validator
 }
 
-func NewHandler(svc *<domain>svc.Service) *Handler {
-    return &Handler{svc: svc}
+func NewHandler(svc *domain<domain>.<Domain>Svc, v Validator) *Handler {
+    return &Handler{svc: svc, val: v}
 }
 
-func (h *Handler) RegisterRoutes(g *echo.Group) {
-    g.GET("", h.list<Domain>sHandler)
-    g.POST("", h.create<Domain>Handler)
-    g.GET("/:id", h.get<Domain>ByIDHandler)
-    g.PUT("/:id", h.update<Domain>Handler)
-    g.DELETE("/:id", h.delete<Domain>Handler)
+func (h *Handler) RegisterRoutes(g *router.Group) {
+    g.HandleFunc("GET /", h.list<Domain>sHandler)
+    g.HandleFunc("POST /", h.create<Domain>Handler)
+    g.HandleFunc("GET /{id}", h.get<Domain>ByIDHandler)
+    g.HandleFunc("PUT /{id}", h.update<Domain>Handler)
+    g.HandleFunc("DELETE /{id}", h.delete<Domain>Handler)
 }
 ```
 
-### `infra/http/<domain>hdl/handler.go`
+### `adapter/<domain>/handler.go`
 
 Handlers with swag annotations. Map `<domain>.ErrNotFound` → 404:
 
 ```go
-func (h *Handler) get<Domain>ByIDHandler(c *echo.Context) error {
-    u, err := h.svc.Get<Domain>ByID(c.Request().Context(), c.Param("id"))
+func (h *Handler) get<Domain>ByIDHandler(w http.ResponseWriter, r *http.Request) {
+    u, err := h.svc.Get<Domain>ByID(r.Context(), r.PathValue("id"))
     if err != nil {
-        if errors.Is(err, <domain>.ErrNotFound) {
-            return c.JSON(http.StatusNotFound, map[string]string{"error": "<domain> not found"})
+        if errors.Is(err, domain<domain>.ErrNotFound) {
+            http.Error(w, `{"error":"<domain> not found"}`, http.StatusNotFound)
+            return
         }
-        return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+        http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
+        return
     }
-    return c.JSON(http.StatusOK, u)
+    router.WriteJSON(w, http.StatusOK, u)
 }
 ```
 
 ---
 
-## Step 6 — Wire into cmd/http/main.go
+## Step 4 — Wire into cmd/http/main.go
 
 ```go
-func registerRouters(g *echo.Group, db *sql.DB) {
-    userRepo := userrepo.NewSQLite(db)
-    userSvc := usersvc.NewService(userRepo, otel.Tracer("user"))
-    userhdl.NewHandler(userSvc).RegisterRoutes(g.Group("/users"))
-
-    // Add new domain:
-    <domain>Repo := <domain>repo.NewSQLite(db)
-    <domain>Svc := <domain>svc.NewService(<domain>Repo, otel.Tracer("<domain>"))
-    <domain>hdl.NewHandler(<domain>Svc).RegisterRoutes(g.Group("/<domain>s"))
-}
+// In main():
+<domain>Repo := <domain>adapter.NewSQLite(db)
+<domain>Svc := <domain>.NewService(<domain>Repo, otel.Tracer("<domain>"))
+r.Group("/<domain>s", <domain>adapter.NewHandler(<domain>Svc, v).RegisterRoutes)
 ```
 
 ---
 
-## Step 7 — Regenerate Swagger docs
+## Step 5 — Regenerate Swagger docs
 
 ```bash
 go tool swag init -g cmd/http/main.go -o docs/
@@ -293,11 +284,11 @@ make check
 - [ ] `domain/<domain>/entity.go` — exported entity + input types
 - [ ] `domain/<domain>/errors.go` — ErrNotFound sentinel
 - [ ] `domain/<domain>/port.go` — Repository interface
-- [ ] `infra/sqlite/<domain>repo/repository.go` — Repository adapter
-- [ ] `app/<domain>svc/service.go` — Service with OTEL tracing
-- [ ] `infra/http/<domain>hdl/dto.go` — request DTOs with validate + example tags
-- [ ] `infra/http/<domain>hdl/routes.go` — Handler + NewHandler + RegisterRoutes
-- [ ] `infra/http/<domain>hdl/handler.go` — handlers with swag annotations
+- [ ] `domain/<domain>/service.go` — Service with OTEL tracing
+- [ ] `adapter/<domain>/repository.go` — SQLite Repository adapter
+- [ ] `adapter/<domain>/dto.go` — request DTOs with validate + example tags
+- [ ] `adapter/<domain>/routes.go` — Handler + NewHandler + RegisterRoutes
+- [ ] `adapter/<domain>/handler.go` — handlers with swag annotations
 - [ ] `cmd/http/main.go` — wire repo → service → handler
 - [ ] `make swagger` — regenerate Swagger docs
 - [ ] `make check` — fmt + vet + lint + test all pass

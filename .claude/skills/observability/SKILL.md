@@ -33,11 +33,12 @@ type xxxService struct {
 }
 ```
 
-## Echo v5 OTEL Middleware — `infra/otelecho/`
+## net/http OTEL Middleware — `infra/otelhttp/`
 
-- `infra/otelecho/middleware.go` — custom middleware (official `otelecho` only supports Echo v4)
+- `infra/otelhttp/middleware.go` — custom middleware for Go stdlib net/http
+- `Middleware(serviceName string) func(http.Handler) http.Handler`
+- Uses `statusWriter` wrapper to capture response status code for span attributes
 - Injects `trace_id` + `span_id` into request context
-- **Echo v5 quirk:** use `echo.UnwrapResponse(c.Response())` to get `*echo.Response` with `.Status` field — `c.Response()` returns plain `http.ResponseWriter`
 
 ## Structured Logging — `infra/logger/`
 
@@ -47,5 +48,5 @@ type xxxService struct {
 
 ## Metrics — `infra/metrics/`
 
-- `infra/metrics/metrics.go` — Prometheus registry
-- Exposes `/metrics` endpoint for Prometheus scraping
+- `infra/metrics/metrics.go` — Prometheus registry with `promhttp.HandlerFor()`
+- Exposes via `r.Route("GET /metrics", metrics.Handler())` in main

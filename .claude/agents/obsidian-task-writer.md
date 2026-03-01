@@ -45,8 +45,8 @@ Use `+07:00` timezone offset (Ho Chi Minh City).
 <one sentence describing what this task accomplishes>
 
 ## Implementation steps (TDD order)
-1. Write failing service tests: `biz/<domain>/service_test.go`
-2. Write failing handler tests: `biz/<domain>/controller_test.go`
+1. Write failing service tests: `domain/<domain>/service_test.go`
+2. Write failing handler tests: `adapter/<domain>/handler_test.go`
 3. Get user approval on tests before implementing
 4. Implement: run `make check` until green
 5. Swagger: `make swagger`
@@ -64,25 +64,26 @@ Use `+07:00` timezone offset (Ho Chi Minh City).
 The feature-planner plan follows this order:
 1. DB schema (migration)
 2. SQL queries (sqlc)
-3. Model
+3. Entity + Port
 4. DTOs
 5. Service RED (tests first)
 6. Service GREEN (implementation)
-7. Route
-8. Handlers RED (tests first)
-9. Handlers GREEN (implementation)
-10. Wire-up (main.go)
-11. Swagger
-12. Quality gate
+7. Repo adapter
+8. Routes
+9. Handler RED (tests first)
+10. Handler GREEN (implementation)
+11. Wire-up (main.go)
+12. Swagger
+13. Quality gate
 
 Group these into **logical task units** that can be reviewed and approved independently:
 
 | Task | Steps grouped | timeEstimate |
 |------|--------------|--------------|
 | 1. DB + codegen | Migration SQL + queries SQL + sqlc generate | 20 min |
-| 2. Model + DTOs | model.go + dto/dto.go | 15 min |
+| 2. Entity + DTOs | entity.go + errors.go + port.go + dto.go | 15 min |
 | 3. Service TDD | service_test.go (RED) → service.go (GREEN) | 45 min |
-| 4. Handler TDD | controller_test.go (RED) → controller.go (GREEN) | 45 min |
+| 4. Handler TDD | handler_test.go (RED) → handler.go + routes.go + repository.go (GREEN) | 45 min |
 | 5. Wire + Swagger | main.go wiring + make swagger + make check | 20 min |
 
 Adjust task count, grouping, and time estimates based on the actual complexity of the feature.
@@ -96,7 +97,7 @@ Adjust task count, grouping, and time estimates based on the actual complexity o
 Examples:
 ```
 2026-02-23-product-catalog-1-db-codegen.md
-2026-02-23-product-catalog-2-model-dtos.md
+2026-02-23-product-catalog-2-entity-dtos.md
 2026-02-23-product-catalog-3-service-tdd.md
 2026-02-23-product-catalog-4-handler-tdd.md
 2026-02-23-product-catalog-5-wire-swagger.md
@@ -128,4 +129,4 @@ Run `/tdd-implement <path>` for each task in order.
 - Never skip the acceptance criteria checklist
 - Use the exact YAML field names from the schema — no extras, no omissions
 - Set `priority: high` for tasks on the critical path (schema + codegen), `normal` for others
-- Include specific file paths (`biz/<domain>/service_test.go`) in the implementation steps
+- Include specific file paths (`domain/<domain>/service_test.go`) in the implementation steps

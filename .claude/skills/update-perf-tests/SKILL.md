@@ -97,10 +97,10 @@ After `make perf` completes, present the results:
 - (list all new scenarios)
 
 ### Threshold results
-- <metric_name>: p(95)=<Xms> — ✅ PASS / ❌ FAIL
-- error_rate: <X>% — ✅ PASS / ❌ FAIL
+- <metric_name>: p(95)=<Xms> — PASS / FAIL
+- error_rate: <X>% — PASS / FAIL
 
-### Overall: ✅ ALL PASS / ❌ <N> FAILURES
+### Overall: ALL PASS / <N> FAILURES
 ```
 
 If thresholds fail:
@@ -126,7 +126,7 @@ If all thresholds pass:
 
 All perf thresholds pass. Run the PR reviewer for final gate:
 
-  Use the pr-reviewer agent on biz/<domain>/
+  Use the pr-reviewer agent on adapter/<domain>/
 ```
 
 ---

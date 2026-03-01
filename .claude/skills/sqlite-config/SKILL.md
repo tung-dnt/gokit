@@ -22,7 +22,7 @@ Reference for the SQLite database layer in `infra/sqlite/`.
 
 - Uses `//go:embed migrations/*.sql` to bundle migration files
 - Migration SQL files live in `infra/sqlite/migrations/` (e.g., `user.sql`)
-- Run migrations: `make migrate` (runs `cmd/migrate/main.go`)
+- Migrations run automatically in `OpenDB()`
 
 ## sqlc Code Generation
 
@@ -43,8 +43,8 @@ import (
 ## Wiring Pattern (Clean Architecture)
 
 ```go
-// In cmd/http/main.go registerRouters():
-userRepo := userrepo.NewSQLite(db)                         // infra/sqlite/userrepo
-userSvc := usersvc.NewService(userRepo, otel.Tracer("user")) // app/usersvc
-userhdl.NewHandler(userSvc).RegisterRoutes(g.Group("/users")) // infra/http/userhdl
+// In cmd/http/main.go:
+userRepo := useradapter.NewSQLite(db)                            // adapter/user
+userSvc := user.NewService(userRepo, otel.Tracer("user"))        // domain/user
+r.Group("/users", useradapter.NewHandler(userSvc, v).RegisterRoutes) // adapter/user
 ```

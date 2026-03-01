@@ -2,9 +2,9 @@
 
 ## Project Overview
 
-A Go RESTful API boilerplate built on **Echo v5 + SQLite + sqlc** with full observability (OpenTelemetry, Tempo, Loki, Grafana). Uses Clean Architecture with strict dependency rules: domain → nothing, app → domain only, infra → domain + app.
+A Go RESTful API boilerplate built on **net/http (stdlib) + SQLite + sqlc** with full observability (OpenTelemetry, Tempo, Loki, Grafana). Uses Clean Architecture with strict dependency rules: domain → nothing, adapter → domain only, infra → domain + adapter.
 
-**Module:** `restful-boilerplate` | **Go:** 1.26.0 | **Deps:** Echo v5, modernc/sqlite, go-playground/validator, swaggo/swag
+**Module:** `restful-boilerplate` | **Go:** 1.26.0 | **Deps:** modernc/sqlite, go-playground/validator, swaggo/swag
 
 **Dev tools (via `go tool`):** `sqlc generate`, `swag init`, `air`, `golangci-lint`
 
@@ -14,44 +14,46 @@ A Go RESTful API boilerplate built on **Echo v5 + SQLite + sqlc** with full obse
 
 ```
 domain/
-  <domain>/                → Pure domain types (zero framework imports)
+  <domain>/                → Pure domain types + service (zero framework imports)
     entity.go              → Exported entity + input types
     errors.go              → Exported sentinel errors (e.g. ErrNotFound)
     port.go                → Repository interface
+    service.go             → Service (UserSvc) + CRUD + generateID() + OTEL tracing
+    service_test.go        → External test package (package <domain>_test)
+    internal_test.go       → Same-package tests for unexported helpers
 
-app/
-  <domain>svc/             → Application/use-case layer
-    service.go             → Service + CRUD + generateID() + OTEL tracing
-    service_test.go
-
-infra/
-  http/<domain>hdl/        → HTTP adapter (Echo handlers)
-    handler.go             → HTTP handler methods + swag annotations
+adapter/
+  <domain>/                → HTTP + persistence adapters
+    handler.go             → HTTP handler methods (net/http HandlerFunc)
     routes.go              → Handler struct + NewHandler + RegisterRoutes
     dto.go                 → Request DTOs with validate + example tags
-    handler_test.go
     dto_test.go
+    handler_test.go
+    repository.go          → SQLite adapter (implements domain port)
+
+infra/
+  http/                    → Router wrapper for net/http ServeMux
+    router.go              → Router struct + NewRouter + Prefix + Use + Group + Route
+    group.go               → Group struct + HandleFunc + prefixPattern
+    util.go                → WriteJSON helper
+    serve.go               → GracefulServe (graceful shutdown)
   sqlite/                  → SQLite connection + migration infra
     connection.go          → OpenDB() — single conn + WAL + busy_timeout
     migrate.go             → Migrate() with //go:embed
     db/                    → sqlc-generated Go code (package sqlitedb)
     queries/               → sqlc-annotated SQL query files
     migrations/            → SQL CREATE TABLE files
-  sqlite/<domain>repo/     → Repository adapter (implements domain port)
-    repository.go          → SQLite adapter + mapper + ErrNoRows→ErrNotFound
-
   config/                  → Env-var config loader
   logger/                  → slog MultiWriter (stdout + ./logs/app.log)
-  metrics/                 → Prometheus metrics
-  middleware/              → Request logger middleware
-  otelecho/                → Custom Echo v5 OTEL middleware
+  metrics/                 → Prometheus metrics (promhttp)
+  middleware/              → Request logger + recovery middleware (net/http)
+  otelhttp/                → Custom net/http OTEL middleware
   telemetry/               → OTLP TracerProvider setup
-  validator/               → Echo Validator adapter (go-playground/validator)
+  validator/               → Validator adapter (go-playground/validator)
   testutil/                → Shared test helpers (SetupTestDB)
 
 cmd/
-  http/main.go             → Echo server entrypoint + registerRouters() (explicit DI)
-  migrate/main.go          → DB migration runner
+  http/main.go             → net/http server entrypoint (explicit DI, inline wiring)
 docs/                      → swag-generated OpenAPI docs (gitignored)
 deploy/                    → Docker Compose for observability stack
 scripts/                   → k6 performance test script
@@ -67,37 +69,48 @@ Makefile                   → All dev tasks
 Strict layered architecture with dependency rule enforcement:
 
 ```
-domain/user         → nothing (pure Go types + interfaces)
-app/usersvc         → domain/user only
-infra/http/userhdl  → domain/user + app/usersvc
-infra/sqlite/userrepo → domain/user + infra/sqlite/db
+domain/user         → nothing (pure Go types + interfaces + service)
+adapter/user        → domain/user + infra/sqlite/db + infra/http + infra/validator
+infra/http          → net/http stdlib only
+infra/sqlite        → database/sql + modernc/sqlite
 ```
 
 **Wiring in cmd/http/main.go:**
-```
-registerRouters(g *echo.Group, db *sql.DB)
-    └── userRepo := userrepo.NewSQLite(db)
-    └── userSvc  := usersvc.NewService(userRepo, otel.Tracer("user"))
-    └── userhdl.NewHandler(userSvc).RegisterRoutes(g.Group("/users"))
+```go
+r := router.NewRouter()
+r.Prefix("/api")
+r.Use(otelhttp.Middleware("restful-boilerplate"))
+r.Use(requestlogger.RequestLog)
+r.Use(requestlogger.Recovery)
+r.Route("GET /metrics", metrics.Handler())
+
+// User domain: db → repo → service → handler → group
+userRepo := useradapter.NewSQLite(db)
+userSvc  := user.NewService(userRepo, otel.Tracer("user"))
+r.Group("/users", useradapter.NewHandler(userSvc, v).RegisterRoutes)
 ```
 
-To add a new domain: run `/new-domain` — it creates all files across the three layers and wires into `cmd/http/main.go`.
+To add a new domain: run `/new-domain` — it creates all files across the layers and wires into `cmd/http/main.go`.
 
 ---
 
 ## Key Patterns
 
-- **Domain layer:** Pure Go types. `User`, `CreateUserInput`, `UpdateUserInput` are exported. `ErrNotFound` sentinel. `Repository` interface defines the port.
-- **Service layer:** Depends on `user.Repository` interface (not sqlc types). All methods exported: `CreateUser`, `ListUsers`, etc. OTEL tracing lives here.
-- **Handler layer:** `Handler` wraps `*usersvc.Service`. Maps `user.ErrNotFound` to HTTP 404.
-- **Repository adapter:** `userrepo.SQLite` implements `user.Repository`. Maps `sql.ErrNoRows` → `user.ErrNotFound`.
-- **Handler pipeline:** `c.Bind` → `c.Validate` → service call → `c.JSON`. Return 400 for bind errors, 422 for validation (auto-handled by `infra/validator`), 404 for not-found, 500 for unexpected.
+- **Domain layer:** Pure Go types. `User`, `CreateUserInput`, `UpdateUserInput` are exported. `ErrNotFound` sentinel. `Repository` interface defines the port. `UserSvc` service type is exported.
+- **Service layer:** Lives in `domain/<domain>/service.go`. Depends on `Repository` interface (not sqlc types). All methods exported: `CreateUser`, `ListUsers`, etc. OTEL tracing lives here.
+- **Handler layer:** `Handler` struct in `adapter/<domain>/` wraps `*user.UserSvc` + `Validator`. Maps `user.ErrNotFound` to HTTP 404.
+- **Repository adapter:** `adapter/<domain>/repository.go` — `SQLite` struct implements `user.Repository`. Maps `sql.ErrNoRows` → `user.ErrNotFound`.
+- **Handler pipeline:** `json.NewDecoder(r.Body).Decode(&req)` → `h.val.Validate(&req)` → service call → `router.WriteJSON(w, status, v)`. Return 400 for decode errors, 422 for validation, 404 for not-found, 500 for unexpected.
 - **Validation:** go-playground/validator tags on DTOs (`validate:"required,min=1,max=100"`). NOT manual `Valid()` method.
 - **Service errors:** Wrap with `fmt.Errorf("opName: %w", err)`. Use `errors.Is()` — never `==`.
 - **ID generation:** `generateID()` helper in service — `crypto/rand` 8-byte hex.
 - **Context:** All service/repo methods accept `ctx context.Context` as first parameter.
 - **Structured logging:** `infra/logger` — slog with JSON output. `logger.FromContext(ctx)` for trace-correlated logger.
-- **OTEL tracing:** Store tracer as struct field (not global). Use `infra/otelecho` middleware for Echo v5.
+- **OTEL tracing:** Store tracer as struct field (not global). Use `infra/otelhttp` middleware for net/http.
+- **Middleware:** Standard `func(http.Handler) http.Handler` signature. Chained via `Router.Use()`.
+- **Route registration:** Go 1.22+ ServeMux patterns: `g.HandleFunc("GET /{id}", handler)`.
+- **Path params:** `r.PathValue("id")` (stdlib).
+- **Graceful shutdown:** `router.GracefulServe(ctx, httpServer, timeout)`.
 
 ---
 
@@ -140,6 +153,6 @@ make obs/down
 
 These skills provide detailed patterns on demand — invoke when working in these areas:
 
-- **`echo-handler-patterns`** — Handler pipeline, error responses, validation patterns
+- **`handler-patterns`** — Handler pipeline, error responses, validation patterns (net/http)
 - **`sqlite-config`** — Connection setup, migrations, sqlc codegen, import paths
 - **`observability`** — OTEL tracing, structured logging, metrics, Grafana stack

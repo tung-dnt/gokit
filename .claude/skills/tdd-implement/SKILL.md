@@ -23,14 +23,14 @@ If a file path was provided, read the task file using the Read tool. If only a t
 
 Read the Obsidian task file. Extract:
 - **Goal**: what this task accomplishes
-- **Domain**: which `biz/<domain>/` package is affected
+- **Domain**: which `domain/<domain>/` package is affected
 - **Implementation steps**: the ordered list from the task body
 - **Acceptance criteria**: the checklist
 
 Display a summary to the user:
 ```
 ## Task: <goal>
-Domain: biz/<domain>/
+Domain: domain/<domain>/ + adapter/<domain>/
 Steps: <N> implementation steps
 ```
 
@@ -45,7 +45,7 @@ Run two skills in sequence:
 Use the Skill tool to invoke `fullstack-dev-skills:test-master`. Provide it:
 - Language: Go (stdlib `testing` only — no testify, no mocks)
 - Task goal and domain operations to be tested
-- Project constraints: in-memory SQLite, Echo v5 httptest, table-driven tests
+- Project constraints: in-memory SQLite, net/http httptest, table-driven tests
 
 Let test-master apply its full skill set — unit testing, integration, TDD iron laws, anti-patterns, QA methodology, automation frameworks, security testing, and reporting. Use its output to build a complete test plan (mandatory cases, edge cases, error paths, anti-patterns to avoid) before writing a single line of test code.
 
@@ -56,10 +56,10 @@ Invoke the `tdd-guide` agent with:
 - The specific operations this task covers
 - The test plan produced by test-master in 2a
 
-The tdd-guide agent writes using project-specific patterns (in-memory SQLite, Echo httptest, table-driven):
-- `biz/<domain>/service_test.go` — table-driven tests for service methods
-- `biz/<domain>/controller_test.go` — HTTP handler tests via Echo + httptest
-- `biz/<domain>/dto/dto_test.go` — validator tag tests (if DTOs are new)
+The tdd-guide agent writes using project-specific patterns (in-memory SQLite, net/http httptest, table-driven):
+- `domain/<domain>/service_test.go` — table-driven tests for service methods (external test package)
+- `adapter/<domain>/handler_test.go` — HTTP handler tests via httptest + router
+- `adapter/<domain>/dto_test.go` — validator tag tests (if DTOs are new)
 
 **STOP here.** Do not implement anything yet.
 
@@ -71,8 +71,8 @@ Show the written tests to the user and ask:
 
 > "Here are the failing tests for this task. Please review:
 >
-> **Service tests:** `biz/<domain>/service_test.go`
-> **Handler tests:** `biz/<domain>/controller_test.go`
+> **Service tests:** `domain/<domain>/service_test.go`
+> **Handler tests:** `adapter/<domain>/handler_test.go`
 >
 > Do the test cases correctly capture the expected behaviour? Reply 'yes' to proceed with implementation, or request changes."
 
@@ -87,26 +87,26 @@ On user approval, implement the minimum code to make the tests pass.
 Follow this order (matches the feature-planner schema-first approach):
 
 1. **DB + codegen** (if this task covers it):
-   - Write `repo/sqlite/migrations/<domain>.sql`
-   - Write `repo/sqlite/queries/<domain>.sql`
+   - Write `infra/sqlite/migrations/<domain>.sql`
+   - Write `infra/sqlite/queries/<domain>.sql`
    - Run: `go tool sqlc generate`
    - Verify: `go build ./...`
 
-2. **Model + DTOs** (if this task covers it):
-   - Write `biz/<domain>/model.go` (entity + input types + errNotFound)
-   - Write `biz/<domain>/dto/dto.go` (validate + example tags)
+2. **Entity + DTOs** (if this task covers it):
+   - Write `domain/<domain>/entity.go` (entity + input types + ErrNotFound)
+   - Write `adapter/<domain>/dto.go` (validate + example tags)
 
 3. **Service** (if this task covers it):
-   - Write `biz/<domain>/service.go`
-   - Run: `go test ./biz/<domain>/... -run TestXxxService -v`
+   - Write `domain/<domain>/service.go`
+   - Run: `go test ./domain/<domain>/... -run TestXxx -v`
 
 4. **Route + Handlers** (if this task covers it):
-   - Write `biz/<domain>/route.go`
-   - Write `biz/<domain>/controller.go` (with swag annotations)
-   - Run: `go test ./biz/<domain>/... -run TestController -v`
+   - Write `adapter/<domain>/routes.go`
+   - Write `adapter/<domain>/handler.go` (with swag annotations)
+   - Run: `go test ./adapter/<domain>/... -run TestXxx -v`
 
 5. **Wire-up + Swagger** (if this task covers it):
-   - Update `cmd/http/main.go` — add to `registerRouters()`
+   - Update `cmd/http/main.go` — add domain wiring
    - Run: `make swagger`
 
 After each file is written, the PostToolUse hook automatically runs `gofmt + make check`. Watch for failures and fix immediately.
@@ -137,7 +137,7 @@ Do NOT mark the task done until `make check` exits with code 0.
 
 After `make check` passes, invoke the `go-code-reviewer` agent **in background** (`run_in_background: true`):
 
-Provide it with the domain path: `biz/<domain>/`
+Provide it with the domain paths: `domain/<domain>/` and `adapter/<domain>/`
 
 Continue to the next step while the review runs.
 
@@ -162,7 +162,7 @@ Present the completion summary:
 ## Task complete: <goal>
 
 ### Quality gate
-- make check: ✅ PASS
+- make check: PASS
 - go-code-reviewer: running in background
 
 ### Files changed
@@ -199,4 +199,3 @@ Continue with the next task:
 - Use `errors.Is()` — never `==` for sentinel errors
 - All service methods must accept `ctx context.Context` as first parameter
 - Wrap all errors: `fmt.Errorf("opName: %w", err)`
-- Only `Controller` is exported from each domain package

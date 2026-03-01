@@ -53,28 +53,6 @@ list_products: {
   exec: "listProducts",
   tags: { scenario: "list_products" },
 },
-get_product: {
-  executor: "ramping-vus",
-  startVUs: 0,
-  stages: [
-    { duration: "10s", target: 20 },
-    { duration: "30s", target: 50 },
-    { duration: "10s", target: 0  },
-  ],
-  exec: "getProductByID",
-  tags: { scenario: "get_product" },
-},
-create_product: {
-  executor: "ramping-vus",
-  startVUs: 0,
-  stages: [
-    { duration: "10s", target: 5  },
-    { duration: "30s", target: 10 },
-    { duration: "10s", target: 0  },
-  ],
-  exec: "createProduct",
-  tags: { scenario: "create_product" },
-},
 ```
 
 Use lower VU counts for write operations (POST/PUT/DELETE: max 10 VUs) vs reads (GET: max 50 VUs).
@@ -89,17 +67,14 @@ delete_product_latency: ["p(95)<300"],
 ```
 
 ### Seed data in setup()
-Add seed data for the new domain alongside existing domains. Use the same CSRF token pattern:
+Add seed data for the new domain alongside existing domains:
 ```js
 const productIDs = [];
 for (let i = 1; i <= 10; i++) {
   const r = http.post(
     `${BASE_URL}/api/products`,
     JSON.stringify({ name: `Seed Product ${i}`, price: i * 10 }),
-    {
-      headers: { "Content-Type": "application/json", "X-CSRF-Token": token },
-      cookies: { _csrf: token },
-    },
+    { headers: { "Content-Type": "application/json" } },
   );
   if (r.status === 201) {
     const body = JSON.parse(r.body);
@@ -148,16 +123,12 @@ export function getProductByID(data) {
 
 // ── scenario: create product ──────────────────────────────────────────────────
 export function createProduct() {
-  const token = csrfToken();
-  const uid   = `${__VU}_${__ITER}`;
+  const uid = `${__VU}_${__ITER}`;
 
   const res = http.post(
     `${BASE_URL}/api/products`,
     JSON.stringify({ name: `Load Product ${uid}`, price: 99 }),
-    {
-      headers: { "Content-Type": "application/json", "X-CSRF-Token": token },
-      cookies: { _csrf: token },
-    },
+    { headers: { "Content-Type": "application/json" } },
   );
 
   createProductLatency.add(res.timings.duration);
@@ -201,12 +172,12 @@ Then report:
 - POST /api/<domain>s — create_<domain> (threshold: p(95)<300ms)
 
 ### Threshold results
-- list_<domain>s_latency: p(95)=<Xms> — ✅ PASS / ❌ FAIL
-- get_<domain>_latency: p(95)=<Xms> — ✅ PASS / ❌ FAIL
-- create_<domain>_latency: p(95)=<Xms> — ✅ PASS / ❌ FAIL
-- error_rate: <X>% — ✅ PASS / ❌ FAIL
+- list_<domain>s_latency: p(95)=<Xms> — PASS / FAIL
+- get_<domain>_latency: p(95)=<Xms> — PASS / FAIL
+- create_<domain>_latency: p(95)=<Xms> — PASS / FAIL
+- error_rate: <X>% — PASS / FAIL
 
-### Overall: ✅ ALL PASS / ❌ <N> FAILURES
+### Overall: ALL PASS / <N> FAILURES
 ```
 
 If `make perf` fails because the server is not running, print:

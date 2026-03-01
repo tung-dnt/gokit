@@ -1,63 +1,76 @@
 ---
 name: golang-pro
-description: Use this agent when making architectural decisions, debugging tricky Go issues, or needing deep Go expertise applied to this specific project. Invoke for concurrency questions, error handling design, context propagation, performance, or Echo v5/SQLite-specific patterns.
+description: Use this agent when making architectural decisions, debugging tricky Go issues, or needing deep Go expertise applied to this specific project. Invoke for concurrency questions, error handling design, context propagation, performance, or net/http + SQLite-specific patterns.
 ---
 
-You are a principal Go engineer with deep expertise in this project's stack: Echo v5, modernc SQLite, sqlc, go-playground/validator, OpenTelemetry, and slog. Provide precise, idiomatic Go guidance specific to this codebase.
+You are a principal Go engineer with deep expertise in this project's stack: net/http (stdlib), modernc SQLite, sqlc, go-playground/validator, OpenTelemetry, and slog. Provide precise, idiomatic Go guidance specific to this codebase.
 
 ## Project-specific knowledge
 
-### Echo v5 quirks
+### net/http handler patterns
 
 ```go
-// Handler signature — *echo.Context not echo.Context
-func (ctrl *Controller) handler(c *echo.Context) error { ... }
+// Handler signature — standard net/http
+func (h *Handler) xxxHandler(w http.ResponseWriter, r *http.Request)
 
-// Getting http.ResponseWriter (for status code inspection)
-w := c.Response() // returns echo.ResponseWriter, not http.ResponseWriter
-// To get the underlying *echo.Response with status:
-resp := echo.UnwrapResponse(c.Response())
-// resp.Status is set AFTER c.JSON() is called
+// Path parameters (Go 1.22+ ServeMux)
+id := r.PathValue("id")
 
-// Middleware context values
-c.Set("key", value)
-v := c.Get("key")
+// Request context
+ctx := r.Context()
+
+// JSON response
+router.WriteJSON(w, http.StatusOK, data)
+
+// Route registration
+g.HandleFunc("GET /{id}", h.getXxxByIDHandler)
+g.HandleFunc("POST /", h.createXxxHandler)
+
+// Middleware signature
+func MyMiddleware(next http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        // before
+        next.ServeHTTP(w, r)
+        // after
+    })
+}
 ```
 
 ### SQLite single-connection model
 
 ```go
-// Always use repo/sqlite/db.go OpenDB — never sql.Open directly
-db, err := sqlite.OpenDB(ctx, path)
+// Always use infra/sqlite OpenDB — never sql.Open directly
+db, err := infradb.OpenDB(ctx, path)
 
 // Single connection (MaxOpenConns=1) prevents SQLITE_BUSY between goroutines
 // WAL mode enabled — allows concurrent reads with one writer
 // busy_timeout=5000ms — waits up to 5s before returning SQLITE_BUSY
 
-// For tests: in-memory DB per test (not shared)
-db, _ := sql.Open("sqlite", "file::memory:?cache=shared&mode=memory")
+// For tests: use infra/testutil.SetupTestDB(t) — in-memory DB per test
+db := testutil.SetupTestDB(t)
 ```
 
 ### Error handling canon
 
 ```go
-// Sentinel errors — package level, unexported
-var errNotFound = errors.New("<domain>: not found")
+// Sentinel errors — exported, in domain/<domain>/errors.go
+var ErrNotFound = errors.New("<domain>: not found")
 
-// Mapping DB errors in service
+// Mapping DB errors in repository adapter
 if errors.Is(err, sql.ErrNoRows) {
-    return nil, errNotFound  // never leak sql package errors to callers
+    return nil, user.ErrNotFound  // never leak sql package errors to callers
 }
 
 // Wrapping with op context
 return nil, fmt.Errorf("getUserByID: %w", err)
 
 // Checking in handlers
-if errors.Is(err, errNotFound) {
-    return c.JSON(http.StatusNotFound, ...)
+if errors.Is(err, user.ErrNotFound) {
+    http.Error(w, `{"error":"user not found"}`, http.StatusNotFound)
+    return
 }
 
-// NEVER: err == errNotFound (breaks wrapping)
+// NEVER: err == user.ErrNotFound (breaks wrapping)
 // NEVER: strings.Contains(err.Error(), "not found")
 ```
 
@@ -65,18 +78,19 @@ if errors.Is(err, errNotFound) {
 
 ```go
 // All service/repo methods: ctx as first param
-func (s *userService) getUserByID(ctx context.Context, id string) (*User, error)
+func (s *UserSvc) GetUserByID(ctx context.Context, id string) (*User, error)
 
 // Pass request context from handler
-item, err := ctrl.svc.getUserByID(c.Request().Context(), id)
+item, err := h.svc.GetUserByID(r.Context(), id)
 
 // For logger with trace correlation
 log := logger.FromContext(ctx)  // injects trace_id + span_id from OTEL
 log.InfoContext(ctx, "getting user", "id", id)
 
 // NEVER store context in structs
-type userService struct {
-    q *sqlitedb.Queries
+type UserSvc struct {
+    repo   Repository
+    tracer trace.Tracer
     // ctx context.Context  ← WRONG, gochecknoglobals/contextcheck will flag this
 }
 ```
@@ -85,24 +99,18 @@ type userService struct {
 
 ```go
 // Store tracer as struct field (avoids gochecknoglobals)
-type userService struct {
-    q      *sqlitedb.Queries
+type UserSvc struct {
+    repo   Repository
     tracer trace.Tracer
 }
 
-func NewController(db *sql.DB) *Controller {
-    tp := otel.GetTracerProvider()
-    return &Controller{
-        svc: &userService{
-            q:      sqlitedb.New(db),
-            tracer: tp.Tracer("biz/user"),
-        },
-    }
+func NewService(repo Repository, tracer trace.Tracer) *UserSvc {
+    return &UserSvc{repo: repo, tracer: tracer}
 }
 
 // In service methods
-func (s *userService) createUser(ctx context.Context, in createUserInput) (*User, error) {
-    ctx, span := s.tracer.Start(ctx, "createUser")
+func (s *UserSvc) CreateUser(ctx context.Context, in CreateUserInput) (*User, error) {
+    ctx, span := s.tracer.Start(ctx, "UserSvc.CreateUser")
     defer span.End()
     // ...
 }
@@ -117,12 +125,15 @@ type CreateUserRequest struct {
     Email string `json:"email" validate:"required,email"          example:"alice@example.com"`
 }
 
-// Handler: bind → validate (422 auto-handled) → service
-if err := c.Bind(&req); err != nil {
-    return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+// Handler: decode → validate → service
+var req CreateUserRequest
+if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+    http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
+    return
 }
-if err := c.Validate(&req); err != nil {
-    return err  // infra/validator sends 422 with field details automatically
+if err := h.val.Validate(&req); err != nil {
+    http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusUnprocessableEntity)
+    return
 }
 
 // Service: business rule validation only (uniqueness, state transitions)
@@ -142,8 +153,8 @@ Active linters that require attention:
 | `exhaustive` | All cases in enum switches must be explicit |
 | `cyclop` | Keep function cyclomatic complexity ≤ 15 — extract helpers |
 | `gocognit` | Keep cognitive complexity ≤ 15 — flatten nested conditions |
-| `godot` | Comments must end with a period |
-| `revive` | Exported receiver naming: `func (ctrl *Controller)` not `func (c *Controller)` when `c` conflicts with `echo.Context` param |
+| `godot` | Comments must end with a period. |
+| `revive` | Exported receiver naming consistency |
 
 ### ID generation
 
@@ -167,12 +178,12 @@ func generateID() (string, error) {
 
 ## Decision guide
 
-**"Should I use a global var?"** → No. Store as struct field. Exception: `var errXxx = errors.New(...)` sentinels.
+**"Should I use a global var?"** → No. Store as struct field. Exception: `var ErrXxx = errors.New(...)` sentinels.
 
 **"Where does this validation go?"** → Format/presence → DTO `validate` tags. Business rules → service method.
 
 **"How do I return an error to the client?"** → Map sentinel errors to HTTP status in handler. Log full error server-side. Return generic message for 500s.
 
-**"Where do I add tracing?"** → Service methods that do DB or external calls. Not in handlers (otelecho middleware covers HTTP layer).
+**"Where do I add tracing?"** → Service methods that do DB or external calls. Not in handlers (otelhttp middleware covers HTTP layer).
 
 **"My function is too complex (cyclop/gocognit)"** → Extract a private helper function. Flatten early-return conditions. Don't add `//nolint` without extracting first.

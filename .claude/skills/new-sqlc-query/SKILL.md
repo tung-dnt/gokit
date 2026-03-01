@@ -73,7 +73,7 @@ RETURNING *;
    make check
    ```
 3. The generated method appears in `infra/sqlite/db/<domain>.sql.go`
-4. Call it from the repository adapter `infra/sqlite/<domain>repo/repository.go` via `r.q.<QueryName>(ctx, ...)`
+4. Call it from the repository adapter `adapter/<domain>/repository.go` via `r.q.<QueryName>(ctx, ...)`
 
 ## If adding a new column (migration required)
 
@@ -84,7 +84,7 @@ RETURNING *;
    Or for a fresh project, edit the `CREATE TABLE` directly.
 2. Re-run `go tool sqlc generate` to pick up schema changes.
 3. Re-run migrations: `make migrate`.
-4. Update `domain/<domain>/entity.go` entity struct and the `toXxx()` mapper in `infra/sqlite/<domain>repo/repository.go`.
+4. Update `domain/<domain>/entity.go` entity struct and the `toXxx()` mapper in `adapter/<domain>/repository.go`.
 
 ## sqlc.yaml reference (project config)
 

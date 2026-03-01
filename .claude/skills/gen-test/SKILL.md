@@ -1,16 +1,16 @@
 ---
 name: gen-test
-description: Generate Go unit and integration tests for handlers, service, or DTOs using table-driven tests, Echo v5 test utilities, and in-memory SQLite
+description: Generate Go unit and integration tests for handlers, service, or DTOs using table-driven tests, net/http httptest, and in-memory SQLite
 ---
 
-Generate idiomatic Go tests for the Clean Architecture layers. Uses stdlib + Echo test utilities only. No external test libraries (no testify, etc.).
+Generate idiomatic Go tests for the Clean Architecture layers. Uses stdlib only. No external test libraries (no testify, etc.).
 
 ## Step 0 — Invoke test-master first
 
 Before writing any test code, use the Skill tool to invoke `fullstack-dev-skills:test-master`. Provide it:
 - Language: Go (stdlib `testing` only — no testify, no mocks)
 - The source file(s) being tested and what they do
-- Project constraints: in-memory SQLite, Echo v5 httptest, table-driven tests, no external test libraries
+- Project constraints: in-memory SQLite, net/http httptest, table-driven tests, no external test libraries
 
 Let test-master apply its full skill set — unit testing strategy, integration testing, TDD iron laws, testing anti-patterns, QA methodology, automation frameworks, security testing, and test reporting. Use its complete output to build a test plan before writing code. The project-specific patterns below then govern the exact implementation.
 
@@ -18,9 +18,9 @@ Let test-master apply its full skill set — unit testing strategy, integration 
 
 ## Rules
 
-- Service tests live in `app/<domain>svc/service_test.go` (same package to access unexported helpers like `generateID`).
-- Handler tests live in `infra/http/<domain>hdl/handler_test.go` (same package).
-- DTO tests live in `infra/http/<domain>hdl/dto_test.go` (same package).
+- Service tests live in `domain/<domain>/service_test.go` (external test package `package <domain>_test` to avoid import cycles).
+- Handler tests live in `adapter/<domain>/handler_test.go` (same package).
+- DTO tests live in `adapter/<domain>/dto_test.go` (same package).
 - Use **table-driven tests**: `tests := []struct{ name string; ... }{ {...}, ... }` with `t.Run(tt.name, ...)`.
 - Use `t.Fatal` / `t.Errorf` — never `panic`.
 - Test both happy path and error cases.
@@ -34,31 +34,32 @@ When invoked with a file path, generate the corresponding test file:
 
 | Source file | Test file | What to test |
 |-------------|-----------|--------------|
-| `infra/http/<domain>hdl/dto.go` | `infra/http/<domain>hdl/dto_test.go` | Validator tag behaviour |
-| `app/<domain>svc/service.go` | `app/<domain>svc/service_test.go` | CRUD ops with in-memory SQLite |
-| `infra/http/<domain>hdl/handler.go` | `infra/http/<domain>hdl/handler_test.go` | HTTP status codes via Echo |
+| `adapter/<domain>/dto.go` | `adapter/<domain>/dto_test.go` | Validator tag behaviour |
+| `domain/<domain>/service.go` | `domain/<domain>/service_test.go` | CRUD ops with in-memory SQLite |
+| `adapter/<domain>/handler.go` | `adapter/<domain>/handler_test.go` | HTTP status codes via httptest |
 
 ---
 
 ## Test helper — service setup
 
 ```go
-package usersvc
+package user_test
 
 import (
     "testing"
 
     "go.opentelemetry.io/otel/trace/noop"
 
-    testutil "restful-boilerplate/infra/testutil"
-    "restful-boilerplate/infra/sqlite/userrepo"
+    useradapter "restful-boilerplate/adapter/user"
+    "restful-boilerplate/domain/user"
+    "restful-boilerplate/infra/testutil"
 )
 
-func newTestService(t *testing.T) *Service {
+func newTestService(t *testing.T) *user.UserSvc {
     t.Helper()
     db := testutil.SetupTestDB(t)
-    repo := userrepo.NewSQLite(db)
-    return NewService(repo, noop.NewTracerProvider().Tracer("test"))
+    repo := useradapter.NewSQLite(db)
+    return user.NewService(repo, noop.NewTracerProvider().Tracer("test"))
 }
 ```
 
@@ -69,7 +70,7 @@ func newTestService(t *testing.T) *Service {
 Test that go-playground/validator enforces the struct tags correctly:
 
 ```go
-package userhdl
+package user
 
 import (
     "testing"
@@ -105,7 +106,7 @@ func TestCreateUserRequest(t *testing.T) {
 Uses a real in-memory SQLite DB through the Repository interface:
 
 ```go
-package usersvc
+package user_test
 
 import (
     "context"
@@ -141,10 +142,10 @@ func TestGetUserByID_NotFound(t *testing.T) {
 
 ## Handler test pattern (`handler_test.go`)
 
-Use `net/http/httptest` + Echo to test the full handler pipeline:
+Use `net/http/httptest` + router to test the full handler pipeline:
 
 ```go
-package userhdl
+package user
 
 import (
     "net/http"
@@ -152,33 +153,34 @@ import (
     "strings"
     "testing"
 
-    "github.com/labstack/echo/v5"
     "go.opentelemetry.io/otel/trace/noop"
 
-    "restful-boilerplate/app/usersvc"
-    testutil "restful-boilerplate/infra/testutil"
-    "restful-boilerplate/infra/sqlite/userrepo"
+    domainuser "restful-boilerplate/domain/user"
+    router "restful-boilerplate/infra/http"
+    "restful-boilerplate/infra/testutil"
     cv "restful-boilerplate/infra/validator"
 )
 
-func newTestEcho(t *testing.T) (*echo.Echo, *usersvc.Service) {
+func newTestHandler(t *testing.T) (http.Handler, *domainuser.UserSvc) {
     t.Helper()
     db := testutil.SetupTestDB(t)
-    repo := userrepo.NewSQLite(db)
-    svc := usersvc.NewService(repo, noop.NewTracerProvider().Tracer("test"))
-    e := echo.New()
-    e.Validator = cv.New()
-    NewHandler(svc).RegisterRoutes(e.Group("/users"))
-    return e, svc
+    repo := NewSQLite(db)
+    svc := domainuser.NewService(repo, noop.NewTracerProvider().Tracer("test"))
+
+    srv := router.NewRouter()
+    srv.Group("/users", func(g *router.Group) {
+        NewHandler(svc, cv.New()).RegisterRoutes(g)
+    })
+    return srv.Handler, svc
 }
 
 func TestCreateUser_HTTP_Success(t *testing.T) {
-    e, _ := newTestEcho(t)
+    h, _ := newTestHandler(t)
     body := `{"name":"Alice","email":"alice@example.com"}`
-    req := httptest.NewRequest(http.MethodPost, "/users", strings.NewReader(body))
-    req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+    req := httptest.NewRequest(http.MethodPost, "/users/", strings.NewReader(body))
+    req.Header.Set("Content-Type", "application/json")
     rec := httptest.NewRecorder()
-    e.ServeHTTP(rec, req)
+    h.ServeHTTP(rec, req)
     if rec.Code != http.StatusCreated {
         t.Fatalf("status = %d, want %d", rec.Code, http.StatusCreated)
     }
@@ -190,7 +192,7 @@ func TestCreateUser_HTTP_Success(t *testing.T) {
 ## Run tests
 
 ```bash
-go test ./app/<domain>svc/...
-go test ./infra/http/<domain>hdl/...
+go test ./domain/<domain>/...
+go test ./adapter/<domain>/...
 go test ./... -count=1   # all packages, no cache
 ```
