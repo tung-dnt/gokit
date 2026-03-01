@@ -13,7 +13,7 @@ func Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if rec := recover(); rec != nil {
-				slog.Error("panic recovered", "error", fmt.Sprint(rec), "path", url.PathEscape(r.URL.Path))
+				slog.Error("panic recovered", "error", fmt.Sprint(rec), "path", url.PathEscape(r.URL.Path)) //nolint:gosec // G706: recovery middleware must log panic value
 				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			}
 		}()

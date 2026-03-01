@@ -5,6 +5,7 @@ go 1.26.0
 require (
 	github.com/go-playground/validator/v10 v10.30.1
 	github.com/prometheus/client_golang v1.23.2
+	github.com/swaggo/http-swagger/v2 v2.0.2
 	github.com/swaggo/swag v1.16.6
 	go.opentelemetry.io/otel v1.40.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.40.0
@@ -234,7 +235,6 @@ require (
 	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/subosito/gotenv v1.4.1 // indirect
 	github.com/swaggo/files/v2 v2.0.0 // indirect
-	github.com/swaggo/http-swagger/v2 v2.0.2 // indirect
 	github.com/tdewolff/parse/v2 v2.8.3 // indirect
 	github.com/tetafro/godot v1.5.4 // indirect
 	github.com/tetratelabs/wazero v1.9.0 // indirect
