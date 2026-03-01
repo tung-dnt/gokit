@@ -13,12 +13,12 @@ type Validator interface {
 
 // Handler exposes user endpoints over HTTP.
 type Handler struct {
-	svc *user.UserSvc
+	svc *user.Svc
 	val Validator
 }
 
 // NewHandler creates a Handler backed by svc with request validation via v.
-func NewHandler(svc *user.UserSvc, v Validator) *Handler {
+func NewHandler(svc *user.Svc, v Validator) *Handler {
 	return &Handler{svc: svc, val: v}
 }
 

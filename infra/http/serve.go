@@ -20,7 +20,7 @@ func GracefulServe(ctx context.Context, srv *http.Server, shutdownTimeout time.D
 	<-ctx.Done()
 	slog.Info("shutting down server")
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+	shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), shutdownTimeout)
 	defer cancel()
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {

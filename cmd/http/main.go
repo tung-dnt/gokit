@@ -32,11 +32,11 @@ import (
 // @schemes        http
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
-	defer stop()
 
 	stopTracing, err := telemetry.SetupAll(ctx, "./logs/app.log")
 	if err != nil {
 		slog.Error("failed to setup tracing", "error", err)
+		stop()
 		os.Exit(1)
 	}
 
@@ -44,10 +44,12 @@ func main() {
 	if err != nil {
 		slog.Error("failed to open database", "error", err)
 		stopTracing()
+		stop()
 		os.Exit(1)
 	}
 
 	// All early-exit paths done; defers are safe from here.
+	defer stop()
 	defer stopTracing()
 	defer db.Close() //nolint:errcheck // best-effort close on exit
 	v := cv.New()

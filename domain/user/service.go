@@ -15,19 +15,19 @@ import (
 	"restful-boilerplate/infra/logger"
 )
 
-// UserSvc orchestrates user use-cases on top of a Repository.
-type UserSvc struct {
+// Svc orchestrates user use-cases on top of a Repository.
+type Svc struct {
 	repo   Repository
 	tracer trace.Tracer
 }
 
 // NewService creates a Service backed by repo and traced via tracer.
-func NewService(repo Repository, tracer trace.Tracer) *UserSvc {
-	return &UserSvc{repo: repo, tracer: tracer}
+func NewService(repo Repository, tracer trace.Tracer) *Svc {
+	return &Svc{repo: repo, tracer: tracer}
 }
 
 // CreateUser creates a new user from the given input.
-func (s *UserSvc) CreateUser(ctx context.Context, in CreateUserInput) (*User, error) {
+func (s *Svc) CreateUser(ctx context.Context, in CreateUserInput) (*User, error) {
 	ctx, span := s.tracer.Start(ctx, "user.CreateUser")
 	defer span.End()
 
@@ -52,7 +52,7 @@ func (s *UserSvc) CreateUser(ctx context.Context, in CreateUserInput) (*User, er
 }
 
 // ListUsers returns all users.
-func (s *UserSvc) ListUsers(ctx context.Context) ([]*User, error) {
+func (s *Svc) ListUsers(ctx context.Context) ([]*User, error) {
 	ctx, span := s.tracer.Start(ctx, "user.ListUsers")
 	defer span.End()
 
@@ -66,7 +66,7 @@ func (s *UserSvc) ListUsers(ctx context.Context) ([]*User, error) {
 }
 
 // GetUserByID returns a single user or ErrNotFound.
-func (s *UserSvc) GetUserByID(ctx context.Context, id string) (*User, error) {
+func (s *Svc) GetUserByID(ctx context.Context, id string) (*User, error) {
 	ctx, span := s.tracer.Start(ctx, "user.GetUserByID")
 	defer span.End()
 
@@ -82,7 +82,7 @@ func (s *UserSvc) GetUserByID(ctx context.Context, id string) (*User, error) {
 }
 
 // UpdateUser applies a partial update to the user identified by id.
-func (s *UserSvc) UpdateUser(ctx context.Context, id string, in UpdateUserInput) (*User, error) {
+func (s *Svc) UpdateUser(ctx context.Context, id string, in UpdateUserInput) (*User, error) {
 	ctx, span := s.tracer.Start(ctx, "user.UpdateUser")
 	defer span.End()
 
@@ -107,7 +107,7 @@ func (s *UserSvc) UpdateUser(ctx context.Context, id string, in UpdateUserInput)
 }
 
 // DeleteUser removes a user by id or returns ErrNotFound.
-func (s *UserSvc) DeleteUser(ctx context.Context, id string) error {
+func (s *Svc) DeleteUser(ctx context.Context, id string) error {
 	ctx, span := s.tracer.Start(ctx, "user.DeleteUser")
 	defer span.End()
 

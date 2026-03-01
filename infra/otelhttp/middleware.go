@@ -51,11 +51,13 @@ type statusWriter struct {
 	status int
 }
 
+// WriteHeader captures the status code and delegates to the wrapped ResponseWriter.
 func (w *statusWriter) WriteHeader(code int) {
 	w.status = code
 	w.ResponseWriter.WriteHeader(code)
 }
 
+// Write captures a default 200 status on first write and delegates to the wrapped ResponseWriter.
 func (w *statusWriter) Write(b []byte) (int, error) {
 	if w.status == 0 {
 		w.status = http.StatusOK

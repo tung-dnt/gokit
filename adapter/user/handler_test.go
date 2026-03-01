@@ -17,7 +17,7 @@ import (
 )
 
 // newTestHandler sets up an http.Handler with user routes backed by in-memory SQLite.
-func newTestHandler(t *testing.T) (http.Handler, *user.UserSvc) {
+func newTestHandler(t *testing.T) (http.Handler, *user.Svc) {
 	t.Helper()
 	db := testutil.SetupTestDB(t)
 	repo := NewSQLite(db)
@@ -31,7 +31,7 @@ func newTestHandler(t *testing.T) (http.Handler, *user.UserSvc) {
 }
 
 // seedUser creates a user via the service and returns it.
-func seedUser(t *testing.T, svc *user.UserSvc, name, email string) *user.User {
+func seedUser(t *testing.T, svc *user.Svc, name, email string) *user.User {
 	t.Helper()
 	u, err := svc.CreateUser(context.Background(), user.CreateUserInput{Name: name, Email: email})
 	if err != nil {

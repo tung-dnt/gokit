@@ -12,7 +12,7 @@ import (
 	"restful-boilerplate/infra/testutil"
 )
 
-func newTestService(t *testing.T) *user.UserSvc {
+func newTestService(t *testing.T) *user.Svc {
 	t.Helper()
 	db := testutil.SetupTestDB(t)
 	repo := useradapter.NewSQLite(db)
