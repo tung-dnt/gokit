@@ -10,8 +10,9 @@ import (
 )
 
 // SetupAll initialises OpenTelemetry tracing and structured log file output.
+// logFormat controls stdout output: "pretty" for colorized, "json" (default) for JSON.
 // Returns a single cleanup func that flushes spans and closes the log file.
-func SetupAll(ctx context.Context, logPath string) (func(), error) {
+func SetupAll(ctx context.Context, logPath string, logFormat string) (func(), error) {
 	shutdownTracer, err := Setup(ctx)
 	if err != nil {
 		return nil, err
@@ -24,7 +25,7 @@ func SetupAll(ctx context.Context, logPath string) (func(), error) {
 		}
 	}
 
-	closeLog, err := logger.Setup(logPath)
+	closeLog, err := logger.Setup(logPath, logFormat)
 	if err != nil {
 		_ = shutdownTracer(ctx) //nolint:errcheck // best-effort cleanup on error path
 		return nil, fmt.Errorf("setup logger: %w", err)

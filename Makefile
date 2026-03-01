@@ -29,7 +29,7 @@ run: ## Run HTTP server (no hot-reload)
 
 .PHONY: dev
 dev: ## Run HTTP server with hot-reload (air)
-	go tool air
+	LOG_FORMAT=pretty go tool air
 
 .PHONY: worker
 worker: ## Run background worker

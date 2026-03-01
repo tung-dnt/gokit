@@ -32,8 +32,9 @@ import (
 // @schemes        http
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	cfg := config.Load(os.Getenv)
+	stopTracing, err := telemetry.SetupAll(ctx, "./logs/app.log", cfg.LogFormat)
 
-	stopTracing, err := telemetry.SetupAll(ctx, "./logs/app.log")
 	if err != nil {
 		slog.Error("failed to setup tracing", "error", err)
 		stop()
@@ -66,14 +67,13 @@ func main() {
 	userSvc := user.NewService(userRepo, otel.Tracer("user"))
 	r.Group("/users", useradapter.NewHandler(userSvc, v).RegisterRoutes)
 
-	cfg := config.Load(os.Getenv).Server
-	addr := net.JoinHostPort(cfg.Host, cfg.Port)
+	addr := net.JoinHostPort(cfg.Server.Host, cfg.Server.Port)
 	httpServer := &http.Server{
 		Addr:         addr,
 		Handler:      r.Handler,
-		ReadTimeout:  cfg.ReadTimeout,
-		WriteTimeout: cfg.WriteTimeout,
-		IdleTimeout:  cfg.IdleTimeout,
+		ReadTimeout:  cfg.Server.ReadTimeout,
+		WriteTimeout: cfg.Server.WriteTimeout,
+		IdleTimeout:  cfg.Server.IdleTimeout,
 	}
 
 	router.GracefulServe(ctx, httpServer, 10*time.Second)

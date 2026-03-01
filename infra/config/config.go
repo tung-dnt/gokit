@@ -7,7 +7,8 @@ import (
 
 // Config holds all application configuration.
 type Config struct {
-	Server ServerConfig
+	Server    ServerConfig
+	LogFormat string
 }
 
 // ServerConfig holds HTTP server configuration.
@@ -23,6 +24,7 @@ type ServerConfig struct {
 // getenv is injected so callers (and tests) can supply their own env source.
 func Load(getenv func(string) string) *Config {
 	return &Config{
+		LogFormat: getEnv(getenv, "LOG_FORMAT", "json"),
 		Server: ServerConfig{
 			Host:         getEnv(getenv, "SERVER_HOST", "0.0.0.0"),
 			Port:         getEnv(getenv, "SERVER_PORT", "4040"),
