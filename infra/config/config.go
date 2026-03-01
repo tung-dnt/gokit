@@ -25,7 +25,7 @@ func Load(getenv func(string) string) *Config {
 	return &Config{
 		Server: ServerConfig{
 			Host:         getEnv(getenv, "SERVER_HOST", "0.0.0.0"),
-			Port:         getEnv(getenv, "SERVER_PORT", "8080"),
+			Port:         getEnv(getenv, "SERVER_PORT", "4040"),
 			ReadTimeout:  getDurationEnv(getenv, "SERVER_READ_TIMEOUT", 10*time.Second),
 			WriteTimeout: getDurationEnv(getenv, "SERVER_WRITE_TIMEOUT", 10*time.Second),
 			IdleTimeout:  getDurationEnv(getenv, "SERVER_IDLE_TIMEOUT", 60*time.Second),
