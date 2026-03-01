@@ -101,7 +101,7 @@ Follow this order (matches the feature-planner schema-first approach):
    - Run: `go test ./domain/<domain>/... -run TestXxx -v`
 
 4. **Route + Handlers** (if this task covers it):
-   - Write `adapter/<domain>/routes.go`
+   - Write `adapter/<domain>/module.go`
    - Write `adapter/<domain>/handler.go` (with swag annotations)
    - Run: `go test ./adapter/<domain>/... -run TestXxx -v`
 

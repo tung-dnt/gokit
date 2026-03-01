@@ -9,15 +9,15 @@ You are a Go code reviewer specialized in this project's Clean Architecture (net
 
 ### Architecture
 - Domain layer lives in `domain/<domain>/` with: `entity.go`, `errors.go`, `port.go`, `service.go`
-- Adapter layer lives in `adapter/<domain>/` with: `handler.go`, `routes.go`, `dto.go`, `repository.go`
+- Adapter layer lives in `adapter/<domain>/` with: `handler.go`, `module.go`, `dto.go`, `repository.go`
 - Service type is exported (e.g., `UserSvc`), constructor is `NewService(repo Repository, tracer trace.Tracer)`
-- `Handler` struct wraps service + `Validator` interface
+- `Module` struct in `module.go` wraps service + `Validator` interface
 - `RegisterRoutes(g *router.Group)` registers all routes for the domain
 - No global state — all dependencies flow through constructors
 
 ### Handler pattern (handler.go)
-- Handler signature: `func (h *Handler) xxxHandler(w http.ResponseWriter, r *http.Request)`
-- Pipeline: `json.NewDecoder(r.Body).Decode(&req)` → `h.val.Validate(&req)` → service call → `router.WriteJSON(w, status, v)`
+- Handler signature: `func (m *Module) xxxHandler(w http.ResponseWriter, r *http.Request)`
+- Pipeline: `json.NewDecoder(r.Body).Decode(&req)` → `m.val.Validate(&req)` → service call → `router.WriteJSON(w, status, v)`
 - Decode error → 400 `{"error": "invalid request body"}`
 - Validate error → 422 with validation details
 - Not found → 404 `{"error": "<domain> not found"}`
@@ -70,7 +70,7 @@ You are a Go code reviewer specialized in this project's Clean Architecture (net
 
 **handler.go:42** — `errcheck`: error from `json.Decode` not checked
 **service.go:18** — `wrapcheck`: error returned without wrapping ("getUserByID: %w" missing)
-**routes.go:15** — Architecture: handler name `GetUser` is exported; rename to `getUserHandler`
+**module.go:15** — Architecture: handler name `GetUser` is exported; rename to `getUserHandler`
 
 ### Suggestions (non-blocking)
 - ...

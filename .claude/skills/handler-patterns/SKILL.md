@@ -9,17 +9,17 @@ Reference for net/http handler patterns used across all `adapter/<domain>/` pack
 ## Handler Signature
 
 ```go
-func (h *Handler) xxxHandler(w http.ResponseWriter, r *http.Request)
+func (m *Module) xxxHandler(w http.ResponseWriter, r *http.Request)
 ```
 
-All handlers are **unexported** methods on `*Handler`.
+All handlers are **unexported** methods on `*Module`.
 
 ## Handler Pipeline
 
 Every handler follows this exact flow:
 
 ```
-json.NewDecoder(r.Body).Decode(&req) → h.val.Validate(&req) → service call → router.WriteJSON(w, status, response)
+json.NewDecoder(r.Body).Decode(&req) → m.val.Validate(&req) → service call → router.WriteJSON(w, status, response)
 ```
 
 ## Error Response Patterns
@@ -27,7 +27,7 @@ json.NewDecoder(r.Body).Decode(&req) → h.val.Validate(&req) → service call �
 | Step | HTTP Status | Response |
 |------|-------------|----------|
 | `json.Decode` fails | **400** | `{"error": "invalid request body"}` |
-| `h.val.Validate` fails | **422** | `{"error": "<validation details>"}` |
+| `m.val.Validate` fails | **422** | `{"error": "<validation details>"}` |
 | `<domain>.ErrNotFound` from service | **404** | `{"error": "<domain> not found"}` |
 | Unexpected error | **500** | `{"error": "internal error"}` — log full error with slog |
 
@@ -42,7 +42,7 @@ if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 }
 
 // Validate error → 422
-if err := h.val.Validate(&req); err != nil {
+if err := m.val.Validate(&req); err != nil {
     http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusUnprocessableEntity)
     return
 }
@@ -63,12 +63,12 @@ http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
 Uses Go 1.22+ ServeMux pattern routing:
 
 ```go
-func (h *Handler) RegisterRoutes(g *router.Group) {
-    g.HandleFunc("GET /", h.listXxxHandler)
-    g.HandleFunc("POST /", h.createXxxHandler)
-    g.HandleFunc("GET /{id}", h.getXxxByIDHandler)
-    g.HandleFunc("PUT /{id}", h.updateXxxHandler)
-    g.HandleFunc("DELETE /{id}", h.deleteXxxHandler)
+func (m *Module) RegisterRoutes(g *router.Group) {
+    g.HandleFunc("GET /", m.listXxxHandler)
+    g.HandleFunc("POST /", m.createXxxHandler)
+    g.HandleFunc("GET /{id}", m.getXxxByIDHandler)
+    g.HandleFunc("PUT /{id}", m.updateXxxHandler)
+    g.HandleFunc("DELETE /{id}", m.deleteXxxHandler)
 }
 ```
 
@@ -89,7 +89,7 @@ router.WriteJSON(w, http.StatusCreated, created)
 
 - Use **go-playground/validator** tags on DTOs: `validate:"required,min=1,max=100"`
 - **NOT** manual `Valid()` method
-- `h.val.Validate(&req)` triggers validation via `infra/validator/validator.go`
+- `m.val.Validate(&req)` triggers validation via `infra/validator/validator.go`
 - DTOs live in `adapter/<domain>/dto.go` with both `validate` and `example` tags
 
 ## Middleware

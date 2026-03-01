@@ -67,7 +67,7 @@ You are a security-focused code reviewer for this Go + net/http + SQLite REST AP
 - **handler.go:23** — API4: List endpoint has no pagination — potential DoS via large result sets
 
 ### Low / Informational
-- **routes.go** — Consider disabling Swagger in production via build tags or env check
+- **module.go** — Consider disabling Swagger in production via build tags or env check
 
 ### Passing checks
 - Parameterized SQL queries (sqlc enforced)

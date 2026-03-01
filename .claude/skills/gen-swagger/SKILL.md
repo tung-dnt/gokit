@@ -39,7 +39,7 @@ Place annotations immediately above each handler function:
 //  @Failure      422   {object}  map[string]string
 //  @Failure      500   {object}  map[string]string
 //  @Router       /<domain>s [post]
-func (h *Handler) createXxxHandler(w http.ResponseWriter, r *http.Request) {
+func (m *Module) createXxxHandler(w http.ResponseWriter, r *http.Request) {
 ```
 
 ## Status code conventions
@@ -51,7 +51,7 @@ func (h *Handler) createXxxHandler(w http.ResponseWriter, r *http.Request) {
 | 204 | DELETE (no body) |
 | 400 | Malformed JSON (decode error) |
 | 404 | Resource not found (`<domain>.ErrNotFound`) |
-| 422 | Validation failure (`h.val.Validate` error) |
+| 422 | Validation failure (`m.val.Validate` error) |
 | 500 | Unexpected service/DB error |
 
 ## Main file annotations (cmd/http/main.go)

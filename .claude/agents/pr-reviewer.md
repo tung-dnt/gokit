@@ -18,12 +18,12 @@ The agent will read all relevant files and produce a structured review.
 ### 1. Architecture compliance
 
 - [ ] Domain layer in `domain/<domain>/` with entity, errors, port, service
-- [ ] Adapter layer in `adapter/<domain>/` with handler, routes, dto, repository
+- [ ] Adapter layer in `adapter/<domain>/` with handler, module, dto, repository
 - [ ] Service type exported (e.g., `<Domain>Svc`), constructor `NewService(repo Repository, tracer trace.Tracer)`
-- [ ] `Handler` struct wraps `*<domain>.Service` + `Validator` interface
+- [ ] `Module` struct in `module.go` wraps `*<domain>.Service` + `Validator` interface
 - [ ] `RegisterRoutes(g *router.Group)` with Go 1.22+ ServeMux patterns
-- [ ] Handler signature: `func (h *Handler) xxxHandler(w http.ResponseWriter, r *http.Request)`
-- [ ] Handler pipeline: `json.Decode` → `h.val.Validate` → service call → `router.WriteJSON`
+- [ ] Handler signature: `func (m *Module) xxxHandler(w http.ResponseWriter, r *http.Request)`
+- [ ] Handler pipeline: `json.Decode` → `m.val.Validate` → service call → `router.WriteJSON`
 - [ ] No global state — dependencies flow through constructors only
 - [ ] All service methods accept `ctx context.Context` as first param
 - [ ] All errors wrapped: `fmt.Errorf("opName: %w", err)`
@@ -61,7 +61,7 @@ The agent will read all relevant files and produce a structured review.
 - [ ] PUT handlers use `UpdateXxxInput` whitelist — not directly binding entity (API3)
 - [ ] List endpoints have bounded results or pagination (API4)
 - [ ] No raw SQL string concatenation — parameterised queries only (SQLi)
-- [ ] `h.val.Validate(&req)` called on every POST/PUT before data is used
+- [ ] `m.val.Validate(&req)` called on every POST/PUT before data is used
 - [ ] No hardcoded secrets or credentials
 
 ### 6. Linting

@@ -83,7 +83,7 @@ Group these into **logical task units** that can be reviewed and approved indepe
 | 1. DB + codegen | Migration SQL + queries SQL + sqlc generate | 20 min |
 | 2. Entity + DTOs | entity.go + errors.go + port.go + dto.go | 15 min |
 | 3. Service TDD | service_test.go (RED) → service.go (GREEN) | 45 min |
-| 4. Handler TDD | handler_test.go (RED) → handler.go + routes.go + repository.go (GREEN) | 45 min |
+| 4. Handler TDD | handler_test.go (RED) → handler.go + module.go + repository.go (GREEN) | 45 min |
 | 5. Wire + Swagger | main.go wiring + make swagger + make check | 20 min |
 
 Adjust task count, grouping, and time estimates based on the actual complexity of the feature.

@@ -18,7 +18,7 @@ Follow this mandatory order for any new domain or significant feature:
 6. Service RED  → domain/<domain>/service_test.go (failing tests first)
 7. Service      → domain/<domain>/service.go (make tests GREEN)
 8. Repo adapter → adapter/<domain>/repository.go (implements domain port)
-9. Routes       → adapter/<domain>/routes.go (Handler + NewHandler + RegisterRoutes)
+9. Module       → adapter/<domain>/module.go (Module + NewHandler + RegisterRoutes)
 10. Handler RED → adapter/<domain>/handler_test.go (failing HTTP tests)
 11. Handlers    → adapter/<domain>/handler.go (make HTTP tests GREEN)
 12. Wire        → cmd/http/main.go (inline wiring)

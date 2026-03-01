@@ -202,7 +202,7 @@ type Update<Domain>Request struct {
 }
 ```
 
-### `adapter/<domain>/routes.go`
+### `adapter/<domain>/module.go`
 
 ```go
 package <domain>
@@ -216,21 +216,21 @@ type Validator interface {
     Validate(i any) error
 }
 
-type Handler struct {
+type Module struct {
     svc *domain<domain>.<Domain>Svc
     val Validator
 }
 
-func NewHandler(svc *domain<domain>.<Domain>Svc, v Validator) *Handler {
-    return &Handler{svc: svc, val: v}
+func NewHandler(svc *domain<domain>.<Domain>Svc, v Validator) *Module {
+    return &Module{svc: svc, val: v}
 }
 
-func (h *Handler) RegisterRoutes(g *router.Group) {
-    g.HandleFunc("GET /", h.list<Domain>sHandler)
-    g.HandleFunc("POST /", h.create<Domain>Handler)
-    g.HandleFunc("GET /{id}", h.get<Domain>ByIDHandler)
-    g.HandleFunc("PUT /{id}", h.update<Domain>Handler)
-    g.HandleFunc("DELETE /{id}", h.delete<Domain>Handler)
+func (m *Module) RegisterRoutes(g *router.Group) {
+    g.HandleFunc("GET /", m.list<Domain>sHandler)
+    g.HandleFunc("POST /", m.create<Domain>Handler)
+    g.HandleFunc("GET /{id}", m.get<Domain>ByIDHandler)
+    g.HandleFunc("PUT /{id}", m.update<Domain>Handler)
+    g.HandleFunc("DELETE /{id}", m.delete<Domain>Handler)
 }
 ```
 
@@ -239,8 +239,8 @@ func (h *Handler) RegisterRoutes(g *router.Group) {
 Handlers with swag annotations. Map `<domain>.ErrNotFound` → 404:
 
 ```go
-func (h *Handler) get<Domain>ByIDHandler(w http.ResponseWriter, r *http.Request) {
-    u, err := h.svc.Get<Domain>ByID(r.Context(), r.PathValue("id"))
+func (m *Module) get<Domain>ByIDHandler(w http.ResponseWriter, r *http.Request) {
+    u, err := m.svc.Get<Domain>ByID(r.Context(), r.PathValue("id"))
     if err != nil {
         if errors.Is(err, domain<domain>.ErrNotFound) {
             http.Error(w, `{"error":"<domain> not found"}`, http.StatusNotFound)
@@ -287,7 +287,7 @@ make check
 - [ ] `domain/<domain>/service.go` — Service with OTEL tracing
 - [ ] `adapter/<domain>/repository.go` — SQLite Repository adapter
 - [ ] `adapter/<domain>/dto.go` — request DTOs with validate + example tags
-- [ ] `adapter/<domain>/routes.go` — Handler + NewHandler + RegisterRoutes
+- [ ] `adapter/<domain>/module.go` — Module + NewHandler + RegisterRoutes
 - [ ] `adapter/<domain>/handler.go` — handlers with swag annotations
 - [ ] `cmd/http/main.go` — wire repo → service → handler
 - [ ] `make swagger` — regenerate Swagger docs

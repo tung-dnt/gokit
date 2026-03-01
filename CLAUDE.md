@@ -25,7 +25,7 @@ domain/
 adapter/
   <domain>/                → HTTP + persistence adapters
     handler.go             → HTTP handler methods (net/http HandlerFunc)
-    routes.go              → Handler struct + NewHandler + RegisterRoutes
+    module.go              → Module struct + NewHandler + RegisterRoutes
     dto.go                 → Request DTOs with validate + example tags
     dto_test.go
     handler_test.go
@@ -98,7 +98,7 @@ To add a new domain: run `/new-domain` — it creates all files across the layer
 
 - **Domain layer:** Pure Go types. `User`, `CreateUserInput`, `UpdateUserInput` are exported. `ErrNotFound` sentinel. `Repository` interface defines the port. `UserSvc` service type is exported.
 - **Service layer:** Lives in `domain/<domain>/service.go`. Depends on `Repository` interface (not sqlc types). All methods exported: `CreateUser`, `ListUsers`, etc. OTEL tracing lives here.
-- **Handler layer:** `Handler` struct in `adapter/<domain>/` wraps `*user.UserSvc` + `Validator`. Maps `user.ErrNotFound` to HTTP 404.
+- **Handler layer:** `Module` struct in `adapter/<domain>/module.go` wraps `*user.Svc` + `Validator`. Maps `user.ErrNotFound` to HTTP 404.
 - **Repository adapter:** `adapter/<domain>/repository.go` — `SQLite` struct implements `user.Repository`. Maps `sql.ErrNoRows` → `user.ErrNotFound`.
 - **Handler pipeline:** `json.NewDecoder(r.Body).Decode(&req)` → `h.val.Validate(&req)` → service call → `router.WriteJSON(w, status, v)`. Return 400 for decode errors, 422 for validation, 404 for not-found, 500 for unexpected.
 - **Validation:** go-playground/validator tags on DTOs (`validate:"required,min=1,max=100"`). NOT manual `Valid()` method.
