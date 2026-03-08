@@ -64,7 +64,7 @@ func newTestHandler(t *testing.T) (http.Handler, *user.UserSvc) {
 
     srv := router.NewRouter()
     srv.Group("/users", func(g *router.Group) {
-        NewHandler(svc, cv.New()).RegisterRoutes(g)
+        NewModule(svc, cv.New()).RegisterRoutes(g)
     })
     return srv.Handler, svc
 }

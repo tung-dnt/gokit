@@ -21,7 +21,7 @@ The agent will read all relevant files and produce a structured review.
 - [ ] Adapter layer in `adapter/<domain>/` with handler, module, dto, repository
 - [ ] Service type exported (e.g., `<Domain>Svc`), constructor `NewService(repo Repository, tracer trace.Tracer)`
 - [ ] `Module` struct in `module.go` wraps `*<domain>.Service` + `Validator` interface
-- [ ] `RegisterRoutes(g *router.Group)` with Go 1.22+ ServeMux patterns
+- [ ] `RegisterRoutes(g *router.Group)` using typed HTTP method helpers (`g.GET`, `g.POST`, etc.)
 - [ ] Handler signature: `func (m *Module) xxxHandler(w http.ResponseWriter, r *http.Request)`
 - [ ] Handler pipeline: `json.Decode` → `m.val.Validate` → service call → `router.WriteJSON`
 - [ ] No global state — dependencies flow through constructors only

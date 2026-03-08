@@ -221,16 +221,16 @@ type Module struct {
     val Validator
 }
 
-func NewHandler(svc *domain<domain>.<Domain>Svc, v Validator) *Module {
+func NewModule(svc *domain<domain>.<Domain>Svc, v Validator) *Module {
     return &Module{svc: svc, val: v}
 }
 
 func (m *Module) RegisterRoutes(g *router.Group) {
-    g.HandleFunc("GET /", m.list<Domain>sHandler)
-    g.HandleFunc("POST /", m.create<Domain>Handler)
-    g.HandleFunc("GET /{id}", m.get<Domain>ByIDHandler)
-    g.HandleFunc("PUT /{id}", m.update<Domain>Handler)
-    g.HandleFunc("DELETE /{id}", m.delete<Domain>Handler)
+    g.GET("/", m.list<Domain>sHandler)
+    g.POST("/", m.create<Domain>Handler)
+    g.GET("/{id}", m.get<Domain>ByIDHandler)
+    g.PUT("/{id}", m.update<Domain>Handler)
+    g.DELETE("/{id}", m.delete<Domain>Handler)
 }
 ```
 
@@ -257,11 +257,17 @@ func (m *Module) get<Domain>ByIDHandler(w http.ResponseWriter, r *http.Request) 
 
 ## Step 4 — Wire into cmd/http/main.go
 
+Inside the versioned group in `main()`:
+
 ```go
-// In main():
-<domain>Repo := <domain>adapter.NewSQLite(db)
-<domain>Svc := <domain>.NewService(<domain>Repo, otel.Tracer("<domain>"))
-r.Group("/<domain>s", <domain>adapter.NewHandler(<domain>Svc, v).RegisterRoutes)
+r.Group("/v1", func(g *router.Group) {
+    g.Prefix("/api")
+
+    // <Domain> domain register
+    <domain>Repo := <domain>adapter.NewSQLite(db)
+    <domain>Svc := <domain>.NewService(<domain>Repo, otel.Tracer("<domain>"))
+    g.Group("/<domain>s", <domain>adapter.NewModule(<domain>Svc, v).RegisterRoutes)
+})
 ```
 
 ---

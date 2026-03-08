@@ -62,7 +62,7 @@ These are already set — only update if the API version or base path changes:
 //  @title          Restful Boilerplate API
 //  @version        1.0
 //  @description    Go RESTful API boilerplate built on net/http + SQLite.
-//  @host           localhost:8080
+//  @host           localhost:4040
 //  @BasePath       /api
 //  @schemes        http
 ```
@@ -85,7 +85,7 @@ type User struct {
 After regenerating, start the server and open:
 
 ```
-http://localhost:8080/swagger/index.html
+http://localhost:4040/api/v1/swagger/index.html
 ```
 
 ## Checklist

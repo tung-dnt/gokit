@@ -81,10 +81,10 @@ handler_test.go (adapter/<domain>/):
   - TestDeleteXxx_HTTP: success(204), not found(404)
 
 ### Wire-up
-cmd/http/main.go:
+cmd/http/main.go — inside the existing `r.Group("/v1", ...)` block:
   <domain>Repo := <domain>adapter.NewSQLite(db)
   <domain>Svc := <domain>.NewService(<domain>Repo, otel.Tracer("<domain>"))
-  r.Group("/<domain>s", <domain>adapter.NewHandler(<domain>Svc, v).RegisterRoutes)
+  g.Group("/<domain>s", <domain>adapter.NewModule(<domain>Svc, v).RegisterRoutes)
 
 ### Definition of Done
 - [ ] make test passes

@@ -60,19 +60,20 @@ http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
 
 ## Route Registration
 
-Uses Go 1.22+ ServeMux pattern routing:
+Uses typed HTTP method helpers on `Group`:
 
 ```go
 func (m *Module) RegisterRoutes(g *router.Group) {
-    g.HandleFunc("GET /", m.listXxxHandler)
-    g.HandleFunc("POST /", m.createXxxHandler)
-    g.HandleFunc("GET /{id}", m.getXxxByIDHandler)
-    g.HandleFunc("PUT /{id}", m.updateXxxHandler)
-    g.HandleFunc("DELETE /{id}", m.deleteXxxHandler)
+    g.GET("/", m.listXxxHandler)
+    g.POST("/", m.createXxxHandler)
+    g.GET("/{id}", m.getXxxByIDHandler)
+    g.PUT("/{id}", m.updateXxxHandler)
+    g.DELETE("/{id}", m.deleteXxxHandler)
 }
 ```
 
-`Group` also provides `Handle(pattern, http.Handler)` and `Route(pattern, http.Handler)` for pre-built handlers.
+`Group` provides `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `ANY` methods accepting `http.HandlerFunc`.
+`Router` provides the same methods but accepting `http.Handler`.
 
 ## Group-Level Middleware
 
@@ -81,7 +82,7 @@ Groups support scoped middleware via `Use()`. Middleware added to a group wraps 
 ```go
 func (m *Module) RegisterRoutes(g *router.Group) {
     g.Use(someAuthMiddleware)  // only applies to routes in this group
-    g.HandleFunc("GET /", m.listXxxHandler)
+    g.GET("/", m.listXxxHandler)
 }
 ```
 
@@ -91,11 +92,11 @@ func (m *Module) RegisterRoutes(g *router.Group) {
 
 ```go
 func (m *Module) RegisterRoutes(g *router.Group) {
-    g.HandleFunc("GET /", m.listXxxHandler)       // /xxx — no extra middleware
+    g.GET("/", m.listXxxHandler)       // /xxx — no extra middleware
 
     g.Group("/admin", func(sub *router.Group) {
         sub.Use(adminOnlyMiddleware)               // inherits parent mw + adds its own
-        sub.HandleFunc("DELETE /{id}", m.deleteXxxHandler)  // /xxx/admin/{id}
+        sub.DELETE("/{id}", m.deleteXxxHandler)     // /xxx/admin/{id}
     })
 }
 ```
@@ -124,11 +125,11 @@ router.WriteJSON(w, http.StatusCreated, created)
 
 Standard `func(http.Handler) http.Handler` signature.
 
-**Global** (all routes): via `Router.Use()`:
+**Global** (all routes): via `Router.Use()` — middleware is stored and applied per-handler via `wrap()`:
 ```go
 r.Use(otelhttp.Middleware("restful-boilerplate"))
-r.Use(requestlogger.RequestLog)
-r.Use(requestlogger.Recovery)
+r.Use(logger.Middleware)
+r.Use(recovery.Middleware)
 ```
 
 **Group-scoped** (single group's routes): via `Group.Use()`:

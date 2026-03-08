@@ -93,7 +93,7 @@ After `make perf` completes, present the results:
 ## Perf test results
 
 ### New scenarios tested
-- <METHOD> /api/<domain>s — <scenario_name> — threshold: p(95)<Xms
+- <METHOD> /api/v1/<domain>s — <scenario_name> — threshold: p(95)<Xms
 - (list all new scenarios)
 
 ### Threshold results

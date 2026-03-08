@@ -49,4 +49,4 @@ type xxxService struct {
 ## Metrics — `infra/metrics/`
 
 - `infra/metrics/metrics.go` — Prometheus registry with `promhttp.HandlerFor()`
-- Exposes via `r.Route("GET /metrics", metrics.Handler())` in main
+- Exposes via `r.GET("/metrics", metric.Handler())` in main

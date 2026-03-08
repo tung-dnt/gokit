@@ -12,7 +12,7 @@ You are a Go code reviewer specialized in this project's Clean Architecture (net
 - Adapter layer lives in `adapter/<domain>/` with: `handler.go`, `module.go`, `dto.go`, `repository.go`
 - Service type is exported (e.g., `UserSvc`), constructor is `NewService(repo Repository, tracer trace.Tracer)`
 - `Module` struct in `module.go` wraps service + `Validator` interface
-- `RegisterRoutes(g *router.Group)` registers all routes for the domain
+- `RegisterRoutes(g *router.Group)` registers all routes using typed methods (`g.GET`, `g.POST`, etc.)
 - No global state — all dependencies flow through constructors
 
 ### Handler pattern (handler.go)
@@ -38,7 +38,7 @@ You are a Go code reviewer specialized in this project's Clean Architecture (net
 - Swag `example` tags on all fields
 
 ### Route registration
-- Uses Go 1.22+ ServeMux patterns: `g.HandleFunc("GET /{id}", handler)`
+- Uses typed HTTP method helpers: `g.GET("/{id}", handler)`, `g.POST("/", handler)`, etc.
 - Path params via `r.PathValue("id")`
 
 ### Error handling

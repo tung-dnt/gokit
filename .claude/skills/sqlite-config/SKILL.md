@@ -43,8 +43,11 @@ import (
 ## Wiring Pattern (Clean Architecture)
 
 ```go
-// In cmd/http/main.go:
-userRepo := useradapter.NewSQLite(db)                            // adapter/user
-userSvc := user.NewService(userRepo, otel.Tracer("user"))        // domain/user
-r.Group("/users", useradapter.NewHandler(userSvc, v).RegisterRoutes) // adapter/user
+// In cmd/http/main.go — inside the versioned group:
+r.Group("/v1", func(g *router.Group) {
+    g.Prefix("/api")
+    userRepo := useradapter.NewSQLite(db)                            // adapter/user
+    userSvc := user.NewService(userRepo, otel.Tracer("user"))        // domain/user
+    g.Group("/users", useradapter.NewModule(userSvc, v).RegisterRoutes) // adapter/user
+})
 ```

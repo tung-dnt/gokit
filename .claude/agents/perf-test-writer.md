@@ -72,7 +72,7 @@ Add seed data for the new domain alongside existing domains:
 const productIDs = [];
 for (let i = 1; i <= 10; i++) {
   const r = http.post(
-    `${BASE_URL}/api/products`,
+    `${BASE_URL}/api/v1/products`,
     JSON.stringify({ name: `Seed Product ${i}`, price: i * 10 }),
     { headers: { "Content-Type": "application/json" } },
   );
@@ -89,7 +89,7 @@ return { userIDs, productIDs };  // merge with existing return value
 ```js
 // ── scenario: list products ───────────────────────────────────────────────────
 export function listProducts() {
-  const res = http.get(`${BASE_URL}/api/products`);
+  const res = http.get(`${BASE_URL}/api/v1/products`);
 
   listProductsLatency.add(res.timings.duration);
   errorRate.add(res.status !== 200);
@@ -108,7 +108,7 @@ export function getProductByID(data) {
   if (!productIDs || productIDs.length === 0) return;
 
   const id  = productIDs[Math.floor(Math.random() * productIDs.length)];
-  const res = http.get(`${BASE_URL}/api/products/${id}`);
+  const res = http.get(`${BASE_URL}/api/v1/products/${id}`);
 
   getProductLatency.add(res.timings.duration);
   errorRate.add(res.status !== 200);
@@ -126,7 +126,7 @@ export function createProduct() {
   const uid = `${__VU}_${__ITER}`;
 
   const res = http.post(
-    `${BASE_URL}/api/products`,
+    `${BASE_URL}/api/v1/products`,
     JSON.stringify({ name: `Load Product ${uid}`, price: 99 }),
     { headers: { "Content-Type": "application/json" } },
   );
@@ -167,9 +167,9 @@ Then report:
 ## Perf test results
 
 ### New scenarios added
-- GET /api/<domain>s — list_<domain>s (threshold: p(95)<200ms)
-- GET /api/<domain>s/{id} — get_<domain> (threshold: p(95)<100ms)
-- POST /api/<domain>s — create_<domain> (threshold: p(95)<300ms)
+- GET /api/v1/<domain>s — list_<domain>s (threshold: p(95)<200ms)
+- GET /api/v1/<domain>s/{id} — get_<domain> (threshold: p(95)<100ms)
+- POST /api/v1/<domain>s — create_<domain> (threshold: p(95)<300ms)
 
 ### Threshold results
 - list_<domain>s_latency: p(95)=<Xms> — PASS / FAIL

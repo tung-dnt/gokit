@@ -25,7 +25,7 @@ domain/
 adapter/
   <domain>/                → HTTP + persistence adapters
     handler.go             → HTTP handler methods (net/http HandlerFunc)
-    module.go              → Module struct + NewHandler + RegisterRoutes
+    module.go              → Module struct + NewModule + RegisterRoutes
     dto.go                 → Request DTOs with validate + example tags
     dto_test.go
     handler_test.go
@@ -34,7 +34,7 @@ adapter/
 infra/
   http/                    → Router wrapper for net/http ServeMux
     router.go              → Router struct + NewRouter + Prefix + Use + Group + Route
-    group.go               → Group struct + Use (group middleware) + Handle/HandleFunc/Route + nested Group + prefixPattern
+    group.go               → Group struct + Use (group middleware) + GET/POST/PUT/PATCH/DELETE/ANY + nested Group
     util.go                → WriteJSON helper
     serve.go               → GracefulServe (graceful shutdown)
   sqlite/                  → SQLite connection + migration infra
@@ -78,16 +78,20 @@ infra/sqlite        → database/sql + modernc/sqlite
 **Wiring in cmd/http/main.go:**
 ```go
 r := router.NewRouter()
-r.Prefix("/api")
 r.Use(otelhttp.Middleware("restful-boilerplate"))
-r.Use(requestlogger.RequestLog)
-r.Use(requestlogger.Recovery)
-r.Route("GET /metrics", metrics.Handler())
+r.Use(logger.Middleware)
+r.Use(recovery.Middleware)
+r.GET("/metrics", metric.Handler())
 
-// User domain: db → repo → service → handler → group
-userRepo := useradapter.NewSQLite(db)
-userSvc  := user.NewService(userRepo, otel.Tracer("user"))
-r.Group("/users", useradapter.NewHandler(userSvc, v).RegisterRoutes)
+r.Group("/v1", func(g *router.Group) {
+    g.Prefix("/api")
+    g.ANY("/swagger/", httpSwagger.WrapHandler)
+
+    // User domain: db → repo → service → module → group
+    userRepo := useradapter.NewSQLite(db)
+    userSvc  := user.NewService(userRepo, otel.Tracer("user"))
+    g.Group("/users", useradapter.NewModule(userSvc, v).RegisterRoutes)
+})
 ```
 
 To add a new domain: run `/new-domain` — it creates all files across the layers and wires into `cmd/http/main.go`.
@@ -98,7 +102,7 @@ To add a new domain: run `/new-domain` — it creates all files across the layer
 
 - **Domain layer:** Pure Go types. `User`, `CreateUserInput`, `UpdateUserInput` are exported. `ErrNotFound` sentinel. `Repository` interface defines the port. `UserSvc` service type is exported.
 - **Service layer:** Lives in `domain/<domain>/service.go`. Depends on `Repository` interface (not sqlc types). All methods exported: `CreateUser`, `ListUsers`, etc. OTEL tracing lives here.
-- **Handler layer:** `Module` struct in `adapter/<domain>/module.go` wraps `*user.Svc` + `Validator`. Maps `user.ErrNotFound` to HTTP 404.
+- **Handler layer:** `Module` struct in `adapter/<domain>/module.go` wraps `*user.Svc` + `Validator`. `NewModule(svc, v)` constructor. Maps `user.ErrNotFound` to HTTP 404.
 - **Repository adapter:** `adapter/<domain>/repository.go` — `SQLite` struct implements `user.Repository`. Maps `sql.ErrNoRows` → `user.ErrNotFound`.
 - **Handler pipeline:** `json.NewDecoder(r.Body).Decode(&req)` → `h.val.Validate(&req)` → service call → `router.WriteJSON(w, status, v)`. Return 400 for decode errors, 422 for validation, 404 for not-found, 500 for unexpected.
 - **Validation:** go-playground/validator tags on DTOs (`validate:"required,min=1,max=100"`). NOT manual `Valid()` method.
@@ -107,8 +111,8 @@ To add a new domain: run `/new-domain` — it creates all files across the layer
 - **Context:** All service/repo methods accept `ctx context.Context` as first parameter.
 - **Structured logging:** `infra/logger` — slog with JSON output. `logger.FromContext(ctx)` for trace-correlated logger.
 - **OTEL tracing:** Store tracer as struct field (not global). Use `infra/otelhttp` middleware for net/http.
-- **Middleware:** Standard `func(http.Handler) http.Handler` signature. Chained via `Router.Use()` (global) or `Group.Use()` (group-scoped). Group middleware wraps only that group's handlers.
-- **Route registration:** Go 1.22+ ServeMux patterns: `g.HandleFunc("GET /{id}", handler)`. Groups also support `Handle` and `Route` methods.
+- **Middleware:** Standard `func(http.Handler) http.Handler` signature. `Router.Use()` stores middleware in a slice; applied per-handler via `wrap()`. `Group.Use()` for group-scoped middleware.
+- **Route registration:** Typed HTTP method helpers: `g.GET("/", h)`, `g.POST("/", h)`, `g.PUT("/{id}", h)`, `g.DELETE("/{id}", h)`, `g.ANY("/path", h)`. Group methods accept `http.HandlerFunc`; Router methods accept `http.Handler`.
 - **Nested groups:** `g.Group(prefix, fn)` creates sub-groups inheriting parent middleware. Add sub-group-specific middleware via `Use()` before registering routes.
 - **Path params:** `r.PathValue("id")` (stdlib).
 - **Graceful shutdown:** `router.GracefulServe(ctx, httpServer, timeout)`.

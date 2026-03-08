@@ -22,9 +22,9 @@ ctx := r.Context()
 // JSON response
 router.WriteJSON(w, http.StatusOK, data)
 
-// Route registration
-g.HandleFunc("GET /{id}", h.getXxxByIDHandler)
-g.HandleFunc("POST /", h.createXxxHandler)
+// Route registration — typed HTTP method helpers
+g.GET("/{id}", h.getXxxByIDHandler)
+g.POST("/", h.createXxxHandler)
 
 // Middleware signature
 func MyMiddleware(next http.Handler) http.Handler {

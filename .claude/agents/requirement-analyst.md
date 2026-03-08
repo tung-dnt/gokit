@@ -87,11 +87,11 @@ After gathering answers, produce this document:
 ## API surface (draft)
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | /api/<domain>s | List all (paginated if needed) |
-| POST | /api/<domain>s | Create new |
-| GET | /api/<domain>s/{id} | Get by ID |
-| PUT | /api/<domain>s/{id} | Update |
-| DELETE | /api/<domain>s/{id} | Delete |
+| GET | /api/v1/<domain>s | List all (paginated if needed) |
+| POST | /api/v1/<domain>s | Create new |
+| GET | /api/v1/<domain>s/{id} | Get by ID |
+| PUT | /api/v1/<domain>s/{id} | Update |
+| DELETE | /api/v1/<domain>s/{id} | Delete |
 
 ## Performance expectations
 | Metric | Target |
@@ -141,7 +141,7 @@ sequenceDiagram
     participant S as Service
     participant DB as SQLite
 
-    C->>H: POST /api/<domain>s {body}
+    C->>H: POST /api/v1/<domain>s {body}
     H->>H: Bind + Validate
     H->>S: create<Domain>(ctx, input)
     S->>S: generateID()
