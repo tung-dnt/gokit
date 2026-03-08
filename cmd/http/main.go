@@ -59,17 +59,22 @@ func main() {
 	metric := metrics.New()
 
 	r := router.NewRouter()
-	r.Prefix("/api")
 	r.Use(metric.Middleware)
 	r.Use(otelhttp.Middleware("restful-boilerplate"))
 	r.Use(logger.Middleware)
 	r.Use(recovery.Middleware)
-	r.Router.Handle("GET /metrics", metric.Handler())
-	r.Router.Handle("/swagger/", httpSwagger.WrapHandler)
-	// User domain register
-	userRepo := useradapter.NewSQLite(db)
-	userSvc := user.NewService(userRepo, otel.Tracer("user"))
-	r.Group("/users", useradapter.NewModule(userSvc, v).RegisterRoutes)
+
+	r.GET("/metrics", metric.Handler())
+	r.ANY("/swagger/", httpSwagger.WrapHandler)
+
+	r.Group("/api", func(g *router.Group) {
+		g.Prefix("/v1")
+
+		// User domain register
+		userRepo := useradapter.NewSQLite(db)
+		userSvc := user.NewService(userRepo, otel.Tracer("user"))
+		g.Group("/users", useradapter.NewModule(userSvc, v).RegisterRoutes)
+	})
 
 	addr := net.JoinHostPort(cfg.Server.Host, cfg.Server.Port)
 	httpServer := &http.Server{

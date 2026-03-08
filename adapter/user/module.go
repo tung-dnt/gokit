@@ -24,9 +24,9 @@ func NewModule(svc *user.Svc, v Validator) *Module {
 
 // RegisterRoutes mounts all user endpoints onto g.
 func (m *Module) RegisterRoutes(g *router.Group) {
-	g.HandleFunc("GET /", m.listUsersHandler)
-	g.HandleFunc("POST /", m.createUserHandler)
-	g.HandleFunc("GET /{id}", m.getUserByIDHandler)
-	g.HandleFunc("PUT /{id}", m.updateUserHandler)
-	g.HandleFunc("DELETE /{id}", m.deleteUserHandler)
+	g.GET("/", m.listUsersHandler)
+	g.POST("/", m.createUserHandler)
+	g.GET("/{id}", m.getUserByIDHandler)
+	g.PUT("/{id}", m.updateUserHandler)
+	g.DELETE("/{id}", m.deleteUserHandler)
 }

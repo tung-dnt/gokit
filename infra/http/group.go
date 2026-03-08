@@ -19,21 +19,6 @@ func (g *Group) Use(mw func(http.Handler) http.Handler) {
 	g.mws = append(g.mws, mw)
 }
 
-// Handle registers handler for the given pattern within this group's prefix.
-func (g *Group) Handle(pattern string, handler http.Handler) {
-	g.mux.Handle(prefixPattern(g.prefix, pattern), g.wrap(handler))
-}
-
-// HandleFunc registers a handler function for the given pattern within this group's prefix.
-func (g *Group) HandleFunc(pattern string, handler http.HandlerFunc) {
-	g.mux.Handle(prefixPattern(g.prefix, pattern), g.wrap(handler))
-}
-
-// Route registers a single handler for the given pattern within this group's prefix.
-func (g *Group) Route(pattern string, h http.Handler) {
-	g.mux.Handle(prefixPattern(g.prefix, pattern), g.wrap(h))
-}
-
 // Group creates a nested sub-group with an additional prefix.
 // The sub-group inherits this group's middleware chain.
 func (g *Group) Group(prefix string, fn func(*Group)) {
@@ -44,6 +29,47 @@ func (g *Group) Group(prefix string, fn func(*Group)) {
 	}
 	copy(sub.mws, g.mws)
 	fn(sub)
+}
+
+// Prefix adds a prefix to this group, affecting all existing and future routes.
+func (g *Group) Prefix(prefix string) {
+	g.prefix += prefix
+}
+
+// ANY registers a single handler for the given pattern.
+func (g *Group) ANY(pattern string, h http.HandlerFunc) *error {
+	g.mux.Handle(prefixPattern(g.prefix, pattern), g.wrap(h))
+	return nil
+}
+
+// GET registers a handler for GET requests at the given path.
+func (g *Group) GET(path string, h http.HandlerFunc) *error {
+	g.mux.Handle(prefixPattern("GET "+g.prefix, path), g.wrap(h))
+	return nil
+}
+
+// POST registers a handler for GET requests at the given path.
+func (g *Group) POST(path string, h http.HandlerFunc) *error {
+	g.mux.Handle(prefixPattern("POST "+g.prefix, path), g.wrap(h))
+	return nil
+}
+
+// PUT registers a handler for GET requests at the given path.
+func (g *Group) PUT(path string, h http.HandlerFunc) *error {
+	g.mux.Handle(prefixPattern("PUT "+g.prefix, path), g.wrap(h))
+	return nil
+}
+
+// PATCH registers a handler for GET requests at the given path.
+func (g *Group) PATCH(path string, h http.HandlerFunc) *error {
+	g.mux.Handle(prefixPattern("PATCH "+g.prefix, path), g.wrap(h))
+	return nil
+}
+
+// DELETE registers a handler for GET requests at the given path.
+func (g *Group) DELETE(path string, h http.HandlerFunc) *error {
+	g.mux.Handle(prefixPattern("DELETE "+g.prefix, path), g.wrap(h))
+	return nil
 }
 
 // wrap applies the group's middleware chain to a handler.

@@ -17,8 +17,8 @@ func NewRouter() *Router {
 	return &Router{Router: mux, Handler: mux}
 }
 
-// Prefix sets a global URL prefix applied to all subsequent routes.
-func (s *Router) Prefix(globalPrefix string) *error {
+// GlobalPrefix sets a global URL prefix applied to all subsequent routes.
+func (s *Router) GlobalPrefix(globalPrefix string) *error {
 	s.prefix = globalPrefix
 	return nil
 }
@@ -35,8 +35,38 @@ func (s *Router) Group(prefix string, fn func(*Group)) *error {
 	return nil
 }
 
-// Route registers a single handler for the given pattern.
-func (s *Router) Route(pattern string, h http.Handler) *error {
+// ANY registers a single handler for the given pattern.
+func (s *Router) ANY(pattern string, h http.Handler) *error {
 	s.Router.Handle(prefixPattern(s.prefix, pattern), h)
+	return nil
+}
+
+// GET registers a handler for GET requests at the given path.
+func (s *Router) GET(path string, h http.Handler) *error {
+	s.Router.Handle(prefixPattern("GET "+s.prefix, path), h)
+	return nil
+}
+
+// POST registers a handler for GET requests at the given path.
+func (s *Router) POST(path string, h http.Handler) *error {
+	s.Router.Handle(prefixPattern("POST "+s.prefix, path), h)
+	return nil
+}
+
+// PUT registers a handler for GET requests at the given path.
+func (s *Router) PUT(path string, h http.Handler) *error {
+	s.Router.Handle(prefixPattern("PUT "+s.prefix, path), h)
+	return nil
+}
+
+// PATCH registers a handler for GET requests at the given path.
+func (s *Router) PATCH(path string, h http.Handler) *error {
+	s.Router.Handle(prefixPattern("PATCH "+s.prefix, path), h)
+	return nil
+}
+
+// DELETE registers a handler for GET requests at the given path.
+func (s *Router) DELETE(path string, h http.Handler) *error {
+	s.Router.Handle(prefixPattern("DELETE "+s.prefix, path), h)
 	return nil
 }
