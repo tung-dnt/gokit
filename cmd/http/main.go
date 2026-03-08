@@ -54,8 +54,8 @@ func main() {
 	defer stop()
 	defer stopTracing()
 	defer db.Close() //nolint:errcheck // best-effort close on exit
-	v := cv.New()
 
+	v := cv.New()
 	metric := metrics.New()
 
 	r := router.NewRouter()
@@ -63,12 +63,11 @@ func main() {
 	r.Use(otelhttp.Middleware("restful-boilerplate"))
 	r.Use(logger.Middleware)
 	r.Use(recovery.Middleware)
-
 	r.GET("/metrics", metric.Handler())
-	r.ANY("/swagger/", httpSwagger.WrapHandler)
 
-	r.Group("/api", func(g *router.Group) {
-		g.Prefix("/v1")
+	r.Group("/v1", func(g *router.Group) {
+		g.Prefix("/api")
+		g.ANY("/swagger/", httpSwagger.WrapHandler)
 
 		// User domain register
 		userRepo := useradapter.NewSQLite(db)
