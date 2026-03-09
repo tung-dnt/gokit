@@ -63,7 +63,7 @@ func main() {
 	r.Use(otelhttp.Middleware("restful-boilerplate"))
 	r.Use(logger.Middleware)
 	r.Use(recovery.Middleware)
-	r.GET("/metrics", metric.Handler())
+	r.GET("/metrics", metric.Handler().ServeHTTP)
 
 	r.Group("/v1", func(g *router.Group) {
 		g.Prefix("/api")

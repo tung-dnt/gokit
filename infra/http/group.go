@@ -2,92 +2,78 @@ package router
 
 import "net/http"
 
-// Group scopes route registration under a shared URL prefix
-// with optional group-level middleware.
-type Group struct {
+// base holds the shared state and route-registration logic
+// used by both Router and Group.
+type base struct {
 	mux    *http.ServeMux
 	prefix string
 	mws    []func(http.Handler) http.Handler
 }
 
-// Use appends middleware that wraps all handlers registered in this group.
+// Use appends middleware that wraps all handlers registered on this base.
 // Middleware must be added before registering routes.
-func (r *Group) Use(mw func(http.Handler) http.Handler) {
-	r.mws = append(r.mws, mw)
+func (b *base) Use(mw func(http.Handler) http.Handler) {
+	b.mws = append(b.mws, mw)
 }
 
-// Group creates a nested sub-group with an additional prefix.
-// The sub-group inherits this group's middleware chain.
-func (r *Group) Group(prefix string, fn func(*Group)) {
-	sub := &Group{
-		mux:    r.mux,
-		prefix: r.prefix + prefix,
-		mws:    make([]func(http.Handler) http.Handler, len(r.mws)),
-	}
-	copy(sub.mws, r.mws)
+// Prefix adds a prefix affecting all future routes.
+func (b *base) Prefix(prefix string) {
+	b.prefix += prefix
+}
+
+// Group creates a sub-group with an additional prefix.
+// The sub-group inherits the current middleware chain.
+func (b *base) Group(prefix string, fn func(*Group)) {
+	sub := &Group{base: base{
+		mux:    b.mux,
+		prefix: b.prefix + prefix,
+		mws:    make([]func(http.Handler) http.Handler, len(b.mws)),
+	}}
+	copy(sub.mws, b.mws)
 	fn(sub)
 }
 
-// Prefix adds a prefix to this group, affecting all existing and future routes.
-func (r *Group) Prefix(prefix string) {
-	r.prefix += prefix
-}
-
-// ANY registers a single handler for the given pattern.
-func (r *Group) ANY(pattern string, h http.HandlerFunc) *error {
-	r.mux.Handle(r.prefix+pattern, r.wrap(h))
-	return nil
+// ANY registers a handler for all HTTP methods at the given pattern.
+func (b *base) ANY(pattern string, h http.HandlerFunc) {
+	b.mux.Handle(b.prefix+pattern, b.wrap(h))
 }
 
 // GET registers a handler for GET requests at the given path.
-func (r *Group) GET(path string, h http.HandlerFunc) *error {
-	r.mux.Handle("GET "+r.prefix+path, r.wrap(h))
-	return nil
+func (b *base) GET(path string, h http.HandlerFunc) {
+	b.mux.Handle("GET "+b.prefix+path, b.wrap(h))
 }
 
-// POST registers a handler for GET requests at the given path.
-func (r *Group) POST(path string, h http.HandlerFunc) *error {
-	r.mux.Handle("POST "+r.prefix+path, r.wrap(h))
-	return nil
+// POST registers a handler for POST requests at the given path.
+func (b *base) POST(path string, h http.HandlerFunc) {
+	b.mux.Handle("POST "+b.prefix+path, b.wrap(h))
 }
 
-// PUT registers a handler for GET requests at the given path.
-func (r *Group) PUT(path string, h http.HandlerFunc) *error {
-	r.mux.Handle("PUT "+r.prefix+path, r.wrap(h))
-	return nil
+// PUT registers a handler for PUT requests at the given path.
+func (b *base) PUT(path string, h http.HandlerFunc) {
+	b.mux.Handle("PUT "+b.prefix+path, b.wrap(h))
 }
 
-// PATCH registers a handler for GET requests at the given path.
-func (r *Group) PATCH(path string, h http.HandlerFunc) *error {
-	r.mux.Handle("PATCH "+r.prefix+path, r.wrap(h))
-	return nil
+// PATCH registers a handler for PATCH requests at the given path.
+func (b *base) PATCH(path string, h http.HandlerFunc) {
+	b.mux.Handle("PATCH "+b.prefix+path, b.wrap(h))
 }
 
-// DELETE registers a handler for GET requests at the given path.
-func (r *Group) DELETE(path string, h http.HandlerFunc) *error {
-	r.mux.Handle("DELETE "+r.prefix+path, r.wrap(h))
-	return nil
+// DELETE registers a handler for DELETE requests at the given path.
+func (b *base) DELETE(path string, h http.HandlerFunc) {
+	b.mux.Handle("DELETE "+b.prefix+path, b.wrap(h))
 }
 
-// wrap applies the group's middleware chain to a handler.
+// wrap applies the middleware chain to a handler.
 // First middleware added via Use is the outermost wrapper.
-func (r *Group) wrap(h http.Handler) http.Handler {
-	for i := len(r.mws) - 1; i >= 0; i-- {
-		h = r.mws[i](h)
+func (b *base) wrap(h http.Handler) http.Handler {
+	for i := len(b.mws) - 1; i >= 0; i-- {
+		h = b.mws[i](h)
 	}
 	return h
 }
 
-// prefixPattern inserts prefix between method and path in Go 1.22+ mux patterns.
-//
-//	"GET /users" + "/api" → "GET /api/users"
-//	"/users"     + "/api" → "/api/users"
-// func prefixPattern(prefix, pattern string) string {
-// 	if prefix == "" {
-// 		return pattern
-// 	}
-// 	if i := strings.IndexByte(pattern, ' '); i >= 0 {
-// 		return pattern[:i] + " " + prefix + pattern[i+1:]
-// 	}
-// 	return prefix + pattern
-// }
+// Group scopes route registration under a shared URL prefix
+// with optional group-level middleware.
+type Group struct {
+	base
+}
