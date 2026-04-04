@@ -4,11 +4,11 @@ description: SQLite connection setup, migration system, and configuration detail
 user_invocable: false
 ---
 
-Reference for the SQLite database layer in `infra/sqlite/`.
+Reference for the SQLite database layer in `pkg/sqlite/`.
 
 ## Connection Setup
 
-**`infra/sqlite/connection.go` — `OpenDB(ctx, path)`**
+**`pkg/sqlite/connection.go` — `OpenDB(ctx, path)`**
 
 - Always use `OpenDB()` — never `sql.Open` directly
 - Single connection mode: `MaxOpenConns(1)` — serializes access, prevents `SQLITE_BUSY`
@@ -18,36 +18,46 @@ Reference for the SQLite database layer in `infra/sqlite/`.
 
 ## Migration System
 
-**`infra/sqlite/migrate.go` — `Migrate(ctx, db)`**
+**`pkg/sqlite/migrate.go` — `Migrate(ctx, db)`**
 
 - Uses `//go:embed migrations/*.sql` to bundle migration files
-- Migration SQL files live in `infra/sqlite/migrations/` (e.g., `user.sql`)
-- Migrations run automatically in `OpenDB()`
+- Migration SQL files live in `pkg/sqlite/migrations/` (e.g., `user.sql`)
+- Migrations called explicitly in `main()` after `OpenDB()`
 
 ## sqlc Code Generation
 
 - Config: `sqlc.yaml` (v2 format)
-- Query files: `infra/sqlite/queries/<domain>.sql` — sqlc-annotated SQL
-- Generated code: `infra/sqlite/db/` (package `sqlitedb`, gitignored regenerated source)
+- Query files: `pkg/sqlite/queries/<domain>.sql` — sqlc-annotated SQL
+- Generated code: `pkg/sqlite/db/` (package `sqlitedb`, gitignored regenerated source)
 - Run codegen: `make sqlc` or `go tool sqlc generate`
 
 ## Import Paths
 
 ```go
 import (
-    sqlitedb "restful-boilerplate/infra/sqlite/db"  // sqlc-generated Queries
-    infradb "restful-boilerplate/infra/sqlite"       // OpenDB(), Migrate()
+    sqlitedb "restful-boilerplate/pkg/sqlite/db"  // sqlc-generated Queries
+    pkgdb "restful-boilerplate/pkg/sqlite"         // OpenDB(), Migrate()
 )
 ```
 
-## Wiring Pattern (Clean Architecture)
+## Wiring Pattern
+
+`*sqlitedb.Queries` is held by `internal/app/app.App` and passed to every module via `NewModule(a)`. Main never calls domain service constructors directly:
 
 ```go
-// In cmd/http/main.go — inside the versioned group:
+// In cmd/http/main.go:
+db, err := pkgdb.OpenDB(ctx, "./data.db")
+// ...
+if err := pkgdb.Migrate(ctx, db); err != nil { ... }
+
+a := &app.App{
+    Queries:   sqlitedb.New(db),
+    Validator: v,
+    Tracer:    otel.GetTracerProvider(),
+}
+
 r.Group("/v1", func(g *router.Group) {
     g.Prefix("/api")
-    userRepo := useradapter.NewSQLite(db)                            // adapter/user
-    userSvc := user.NewService(userRepo, otel.Tracer("user"))        // domain/user
-    g.Group("/users", useradapter.NewModule(userSvc, v).RegisterRoutes) // adapter/user
+    g.Group("/users", usermodule.NewModule(a).RegisterRoutes) // internal/user
 })
 ```

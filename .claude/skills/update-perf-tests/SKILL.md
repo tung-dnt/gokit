@@ -126,7 +126,7 @@ If all thresholds pass:
 
 All perf thresholds pass. Run the PR reviewer for final gate:
 
-  Use the pr-reviewer agent on adapter/<domain>/
+  Use the pr-reviewer agent on internal/<domain>/
 ```
 
 ---

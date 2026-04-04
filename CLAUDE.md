@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-A Go RESTful API boilerplate built on **net/http (stdlib) + SQLite + sqlc** with full observability (OpenTelemetry, Tempo, Loki, Grafana). Uses Clean Architecture with strict dependency rules: domain → nothing, adapter → domain only, infra → domain + adapter.
+A Go RESTful API boilerplate built on **net/http (stdlib) + SQLite + sqlc** with full observability (OpenTelemetry, Tempo, Loki, Grafana). Uses a 3-folder structure: `internal/` for business modules, `pkg/` for pure utilities, `infra/` for Docker/observability configs only. Each domain is split into four sub-packages: `adapter/`, `core/`, `mapping/`, `model/`.
 
 **Module:** `restful-boilerplate` | **Go:** 1.26.0 | **Deps:** modernc/sqlite, go-playground/validator, swaggo/swag
 
@@ -13,30 +13,33 @@ A Go RESTful API boilerplate built on **net/http (stdlib) + SQLite + sqlc** with
 ## Directory Structure
 
 ```
-domain/
-  <domain>/                → Pure domain types + service (zero framework imports)
-    entity.go              → Exported entity + input types
-    errors.go              → Exported sentinel errors (e.g. ErrNotFound)
-    port.go                → Repository interface
-    service.go             → Service (UserSvc) + CRUD + generateID() + OTEL tracing
-    service_test.go        → External test package (package <domain>_test)
-    internal_test.go       → Same-package tests for unexported helpers
+internal/
+  app/                     → Shared DI container (package app)
+    app.go                 → App struct + Validator interface
+  <domain>/                → Domain root — package <domain>
+    module.go              → Module{httpAdapter *<domain>adapter.HTTPAdapter} + NewModule(a *app.App) + RegisterRoutes
+    module.test.go         → Internal test package (package <domain>)
+    adapter/               → HTTP adapter layer — package <domain>adapter
+      http.go              → HTTPAdapter{svc *core.Service, val app.Validator} + exported handler methods
+    core/                  → Business logic layer — package <domain>core
+      <domain>.go          → ErrNotFound sentinel + type aliases (CreateXInput = model.CreateXRequest)
+      service.go           → Service struct + NewService(q, tracer) + all CRUD methods (consolidated)
+      service_test.go      → External test package (package <domain>core_test)
+    mapping/               → Response conversion layer — package <domain>mapping
+      mapping.go           → <Domain>Response struct + ToResponse(sqlitedb.<Domain>)
+    model/                 → Request/response types — package <domain>model
+      dto.go               → Create/UpdateXRequest with validate + json + example tags
+      dto_test.go          → Validator tag tests (internal package <domain>model)
+      errors.go            → ErrNotFound sentinel
+  shared/                  → Cross-domain utilities — package shared
+    generate-id.go         → GenerateID() — crypto/rand 8-byte hex
 
-adapter/
-  <domain>/                → HTTP + persistence adapters
-    handler.go             → HTTP handler methods (net/http HandlerFunc)
-    module.go              → Module struct + NewModule + RegisterRoutes
-    dto.go                 → Request DTOs with validate + example tags
-    dto_test.go
-    handler_test.go
-    repository.go          → SQLite adapter (implements domain port)
-
-infra/
+pkg/                       → Pure utilities — NO business knowledge
   http/                    → Router wrapper for net/http ServeMux
     router.go              → Router struct + NewRouter + Prefix + Use + Group + Route
     group.go               → Group struct + Use (group middleware) + GET/POST/PUT/PATCH/DELETE/ANY + nested Group
     util.go                → WriteJSON helper
-    serve.go               → GracefulServe (graceful shutdown)
+    server.go              → GracefulServe (graceful shutdown)
   sqlite/                  → SQLite connection + migration infra
     connection.go          → OpenDB() — single conn + WAL + busy_timeout
     migrate.go             → Migrate() with //go:embed
@@ -46,16 +49,23 @@ infra/
   config/                  → Env-var config loader
   logger/                  → slog MultiWriter (stdout + ./logs/app.log)
   metrics/                 → Prometheus metrics (promhttp)
-  middleware/              → Request logger + recovery middleware (net/http)
+  recovery/                → Recovery middleware (net/http)
   otelhttp/                → Custom net/http OTEL middleware
   telemetry/               → OTLP TracerProvider setup
   validator/               → Validator adapter (go-playground/validator)
   testutil/                → Shared test helpers (SetupTestDB)
 
+infra/                     → Docker/observability configs ONLY (no Go code)
+  docker-compose.yml
+  alloy/                   → Grafana Alloy log shipper config
+  grafana/                 → Grafana provisioning (dashboards + datasources)
+  loki/                    → Loki config
+  prometheus/              → Prometheus config
+  tempo/                   → Tempo config
+
 cmd/
   http/main.go             → net/http server entrypoint (explicit DI, inline wiring)
 docs/                      → swag-generated OpenAPI docs (gitignored)
-deploy/                    → Docker Compose for observability stack
 scripts/                   → k6 performance test script
 sqlc.yaml                  → sqlc v2 config
 .golangci.yml              → golangci-lint config
@@ -64,53 +74,63 @@ Makefile                   → All dev tasks
 
 ---
 
-## Architecture: Clean Architecture
+## Architecture: 3-Folder Structure
 
-Strict layered architecture with dependency rule enforcement:
+Simple layered structure with clear dependency rules:
 
 ```
-domain/user         → nothing (pure Go types + interfaces + service)
-adapter/user        → domain/user + infra/sqlite/db + infra/http + infra/validator
-infra/http          → net/http stdlib only
-infra/sqlite        → database/sql + modernc/sqlite
+internal/<domain>/  → internal/app (App container) + pkg/sqlite/db + pkg/logger
+internal/app/       → pkg/sqlite/db (Queries) + pkg/validator (Validator interface)
+pkg/                → stdlib + external libs only (no business knowledge)
+infra/              → Docker/observability configs only (no Go code)
 ```
+
+No repository interface — the service uses `*sqlitedb.Queries` directly. Each domain has four sub-packages: `adapter/` (HTTP), `core/` (business logic), `mapping/` (response conversion), `model/` (DTOs). Dependency rule: `adapter/` imports `core/`, `mapping/`, `model/`; `core/` imports `model/`; `model/` imports nothing from the domain. No circular deps.
 
 **Wiring in cmd/http/main.go:**
 ```go
 r := router.NewRouter()
+r.Use(metric.Middleware)
 r.Use(otelhttp.Middleware("restful-boilerplate"))
 r.Use(logger.Middleware)
 r.Use(recovery.Middleware)
-r.GET("/metrics", metric.Handler())
+r.GET("/metrics", metric.Handler().ServeHTTP)
+
+a := &app.App{
+    Queries:   sqlitedb.New(db),
+    Validator: v,
+    Tracer:    otel.GetTracerProvider(),
+}
 
 r.Group("/v1", func(g *router.Group) {
     g.Prefix("/api")
     g.ANY("/swagger/", httpSwagger.WrapHandler)
-
-    // User domain: db → repo → service → module → group
-    userRepo := useradapter.NewSQLite(db)
-    userSvc  := user.NewService(userRepo, otel.Tracer("user"))
-    g.Group("/users", useradapter.NewModule(userSvc, v).RegisterRoutes)
+    g.Group("/users", user.NewModule(a).RegisterRoutes)
 })
 ```
 
-To add a new domain: run `/new-domain` — it creates all files across the layers and wires into `cmd/http/main.go`.
+To add a new domain: run `/new-domain` — it creates `internal/<domain>/` with all sub-packages and adds `g.Group("/<domain>s", <domain>.NewModule(a).RegisterRoutes)` to the v1 group in `cmd/http/main.go`.
 
 ---
 
 ## Key Patterns
 
-- **Domain layer:** Pure Go types. `User`, `CreateUserInput`, `UpdateUserInput` are exported. `ErrNotFound` sentinel. `Repository` interface defines the port. `UserSvc` service type is exported.
-- **Service layer:** Lives in `domain/<domain>/service.go`. Depends on `Repository` interface (not sqlc types). All methods exported: `CreateUser`, `ListUsers`, etc. OTEL tracing lives here.
-- **Handler layer:** `Module` struct in `adapter/<domain>/module.go` wraps `*user.Svc` + `Validator`. `NewModule(svc, v)` constructor. Maps `user.ErrNotFound` to HTTP 404.
-- **Repository adapter:** `adapter/<domain>/repository.go` — `SQLite` struct implements `user.Repository`. Maps `sql.ErrNoRows` → `user.ErrNotFound`.
-- **Handler pipeline:** `json.NewDecoder(r.Body).Decode(&req)` → `h.val.Validate(&req)` → service call → `router.WriteJSON(w, status, v)`. Return 400 for decode errors, 422 for validation, 404 for not-found, 500 for unexpected.
+- **Model layer** (`internal/<domain>/model/`, package `<domain>model`): Request DTOs (`Create<Domain>Request`, `Update<Domain>Request`) with `validate` + `json` + `example` tags in `dto.go`. `ErrNotFound` sentinel in `errors.go`. Validator tag tests in `dto_test.go` (package `<domain>model`).
+- **Core layer** (`internal/<domain>/core/`, package `<domain>core`): `ErrNotFound` + type aliases (`CreateXInput = model.CreateXRequest`) in `<domain>.go`. Consolidated `Service` struct + `NewService(q, tracer)` + all CRUD methods in `service.go`. All return `*sqlitedb.<Entity>` directly. OTEL tracing on every method. Service tests in `service_test.go` (package `<domain>core_test`).
+- **Mapping layer** (`internal/<domain>/mapping/`, package `<domain>mapping`): `<Domain>Response` struct + `ToResponse(sqlitedb.<Domain>)` in `mapping.go`. Called by adapter before `WriteJSON`.
+- **Adapter layer** (`internal/<domain>/adapter/`, package `<domain>adapter`): `HTTPAdapter{svc *<domain>core.Service, val app.Validator}` + exported handler methods (`ListXxxHandler`, `CreateXxxHandler`, etc.). Imports `core/`, `mapping/`, `model/`.
+- **Module** (`internal/<domain>/module.go`, package `<domain>`): `Module{httpAdapter *<domain>adapter.HTTPAdapter}` + `NewModule(a *app.App)` + `RegisterRoutes`. Constructor calls `core.NewService` then `adapter.NewHTTPAdapter`. Main imports only the domain root package.
+- **No repository adapter:** Service calls `s.q.<QueryName>(ctx, ...)` on `*sqlitedb.Queries` directly. No intermediate interface.
+- **App container:** `internal/app/app.App` holds `*sqlitedb.Queries`, `Validator`, and `trace.TracerProvider`. Created once in `main`. Every module receives it via `NewModule(a)`.
+- **Tracer:** `a.Tracer.Tracer("<domain>")` called inside `NewModule`. Tests inject `noop.NewTracerProvider()`.
+- **Handler pipeline:** `json.NewDecoder(r.Body).Decode(&req)` → `m.val.Validate(&req)` → service call → `router.WriteJSON(w, status, v)`. Return 400 for decode errors, 422 for validation, 404 for not-found, 500 for unexpected.
+- **JSON helper:** `router.WriteJSON(w, status, v)` — `pkg/http` package name is `router` (no alias needed). `net/http` imported as `http`.
 - **Validation:** go-playground/validator tags on DTOs (`validate:"required,min=1,max=100"`). NOT manual `Valid()` method.
 - **Service errors:** Wrap with `fmt.Errorf("opName: %w", err)`. Use `errors.Is()` — never `==`.
-- **ID generation:** `generateID()` helper in service — `crypto/rand` 8-byte hex.
-- **Context:** All service/repo methods accept `ctx context.Context` as first parameter.
-- **Structured logging:** `infra/logger` — slog with JSON output. `logger.FromContext(ctx)` for trace-correlated logger.
-- **OTEL tracing:** Store tracer as struct field (not global). Use `infra/otelhttp` middleware for net/http.
+- **ID generation:** `shared.GenerateID()` from `internal/shared` — `crypto/rand` 8-byte hex.
+- **Context:** All service/db methods accept `ctx context.Context` as first parameter.
+- **Structured logging:** `pkg/logger` — slog with JSON output. `logger.FromContext(ctx)` for trace-correlated logger.
+- **OTEL tracing:** Store tracer as struct field (not global). Use `pkg/otelhttp` middleware for net/http.
 - **Middleware:** Standard `func(http.Handler) http.Handler` signature. `Router.Use()` stores middleware in a slice; applied per-handler via `wrap()`. `Group.Use()` for group-scoped middleware.
 - **Route registration:** Typed HTTP method helpers: `g.GET("/", h)`, `g.POST("/", h)`, `g.PUT("/{id}", h)`, `g.DELETE("/{id}", h)`, `g.ANY("/path", h)`. Group methods accept `http.HandlerFunc`; Router methods accept `http.Handler`.
 - **Nested groups:** `g.Group(prefix, fn)` creates sub-groups inheriting parent middleware. Add sub-group-specific middleware via `Use()` before registering routes.

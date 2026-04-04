@@ -7,7 +7,7 @@ SHELL         := /bin/bash
 
 BIN_DIR  := bin
 API_BIN  := $(BIN_DIR)/api
-WORK_BIN := $(BIN_DIR)/worker
+FE_BIN   := $(BIN_DIR)/frontend
 DB_PATH  := ./data.db
 OBS_DIR  := deploy
 
@@ -31,10 +31,6 @@ run: ## Run HTTP server (no hot-reload)
 dev: ## Run HTTP server with hot-reload (air)
 	LOG_FORMAT=pretty go tool air
 
-.PHONY: worker
-worker: ## Run background worker
-	go run ./cmd/worker
-
 .PHONY: migrate
 migrate: ## Apply DB migrations (default: ./data.db)
 	go run ./cmd/migrate -db $(DB_PATH)
@@ -42,19 +38,14 @@ migrate: ## Apply DB migrations (default: ./data.db)
 # ─── Build ───────────────────────────────────────────────────────────────────
 
 ##@ Build
-
-.PHONY: build
-build: build/api build/worker ## Build all binaries
-
 .PHONY: build/api
 build/api: ## Build HTTP API binary → bin/api
 	@mkdir -p $(BIN_DIR)
 	go build -o $(API_BIN) ./cmd/http
 
-.PHONY: build/worker
-build/worker: ## Build worker binary → bin/worker
+.PHONY: build/frontend
 	@mkdir -p $(BIN_DIR)
-	go build -o $(WORK_BIN) ./cmd/worker
+	go build -o $(FE_BIN) ./cmd/frontend
 
 .PHONY: clean
 clean: ## Remove build artifacts and DB file

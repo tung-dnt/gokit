@@ -3,7 +3,7 @@ name: new-sqlc-query
 description: Add a new SQL query to an existing domain's query file and regenerate sqlc Go code
 ---
 
-Add a new named SQL query to `infra/sqlite/queries/<domain>.sql` and run `go tool sqlc generate` to produce the corresponding Go method in `infra/sqlite/db/<domain>.sql.go`.
+Add a new named SQL query to `pkg/sqlite/queries/<domain>.sql` and run `go tool sqlc generate` to produce the corresponding Go method in `pkg/sqlite/db/<domain>.sql.go`.
 
 ## sqlc annotation syntax
 
@@ -66,25 +66,25 @@ RETURNING *;
 
 ## Workflow
 
-1. Add the query to `infra/sqlite/queries/<domain>.sql`
+1. Add the query to `pkg/sqlite/queries/<domain>.sql`
 2. Run:
    ```bash
    go tool sqlc generate
    make check
    ```
-3. The generated method appears in `infra/sqlite/db/<domain>.sql.go`
-4. Call it from the repository adapter `adapter/<domain>/repository.go` via `r.q.<QueryName>(ctx, ...)`
+3. The generated method appears in `pkg/sqlite/db/<domain>.sql.go`
+4. Call it from the service `internal/<domain>/service.go` via `s.q.<QueryName>(ctx, ...)`
 
 ## If adding a new column (migration required)
 
-1. Alter `infra/sqlite/migrations/<domain>.sql` — add the column:
+1. Alter `pkg/sqlite/migrations/<domain>.sql` — add the column:
    ```sql
    ALTER TABLE <domain>s ADD COLUMN <field> TEXT;
    ```
    Or for a fresh project, edit the `CREATE TABLE` directly.
 2. Re-run `go tool sqlc generate` to pick up schema changes.
 3. Re-run migrations: `make migrate`.
-4. Update `domain/<domain>/entity.go` entity struct and the `toXxx()` mapper in `adapter/<domain>/repository.go`.
+4. Update `internal/<domain>/<domain>.go` entity struct if the new column needs to be reflected in the domain type.
 
 ## sqlc.yaml reference (project config)
 
@@ -92,12 +92,12 @@ RETURNING *;
 version: "2"
 sql:
   - engine: sqlite
-    queries: infra/sqlite/queries
-    schema: infra/sqlite/migrations
+    queries: pkg/sqlite/queries
+    schema: pkg/sqlite/migrations
     gen:
       go:
         package: sqlitedb
-        out: infra/sqlite/db
+        out: pkg/sqlite/db
         overrides:
           - db_type: DATETIME
             go_type: time.Time

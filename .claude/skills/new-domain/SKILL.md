@@ -1,24 +1,44 @@
 ---
 name: new-domain
-description: Scaffold a new domain following the Clean Architecture pattern (domain/ → adapter/)
+description: Scaffold a new domain following the sub-package structure (model/, core/, mapping/, adapter/)
 ---
 
-Scaffold a new domain across all layers. Use `user` as the reference implementation.
+Scaffold a new domain under `internal/<domain>/`. Use `user` as the reference implementation.
+
+## Architecture
+
+Each domain has **four sub-packages** plus a root module file:
+
+| Location | Go package | Purpose |
+|---|---|---|
+| `internal/<domain>/module.go` | `<domain>` | DI wiring + RegisterRoutes |
+| `internal/<domain>/adapter/http.go` | `<domain>adapter` | HTTP handlers (HTTPAdapter) |
+| `internal/<domain>/core/` | `<domain>core` | Business logic — Service, ErrNotFound, type aliases |
+| `internal/<domain>/mapping/mapping.go` | `<domain>mapping` | DB model → HTTP response conversion |
+| `internal/<domain>/model/` | `<domain>model` | Request DTOs + ErrNotFound sentinel |
+
+Dependency rule: `adapter/` imports `core/`, `mapping/`, `model/`. `core/` imports `model/`. `model/` and `mapping/` import nothing from the domain. **No circular deps.**
+
+Shared ID utility: `restful-boilerplate/internal/shared` → `shared.GenerateID() (string, error)`
 
 ## Rules
 
-- **Domain layer** (`domain/<domain>/`): Pure Go types, zero framework imports. Exported entity, input types, sentinel errors, Repository interface, Service.
-- **Adapter layer** (`adapter/<domain>/`): HTTP handler (net/http), DTOs with `validate` tags, SQLite repository adapter.
-- **Infra layer** (`infra/sqlite/`): Migrations, sqlc queries, generated code.
-- All service/repo methods accept `ctx context.Context` as first parameter.
-- Wrap errors: `fmt.Errorf("opName: %w", err)`.
-- IDs: `crypto/rand` 8-byte hex via `generateID()` helper in service.
+- `model/` is `package <domain>model` — request DTOs + `ErrNotFound` sentinel
+- `core/` is `package <domain>core` — re-exports type aliases + `ErrNotFound` + consolidated `Service`
+- `mapping/` is `package <domain>mapping` — `<Domain>Response` + `ToResponse(sqlitedb.<Domain>)`
+- `adapter/` is `package <domain>adapter` — `HTTPAdapter` with exported handler methods
+- `module.go` is `package <domain>` — `Module{httpAdapter}` + `NewModule(a)` + `RegisterRoutes`
+- Handlers call `mapping.ToResponse(...)` before `router.WriteJSON`
+- `ErrNotFound` defined in `model/errors.go`; re-declared in `core/<domain>.go`; handlers check via `errors.Is(err, <domain>core.ErrNotFound)`
+- All service/db methods accept `ctx context.Context` as first parameter
+- Wrap errors: `fmt.Errorf("opName: %w", err)`
+- IDs: `shared.GenerateID()` from `restful-boilerplate/internal/shared`
 
 ---
 
 ## Step 1 — SQL migration + queries
 
-### `infra/sqlite/migrations/<domain>.sql`
+### `pkg/sqlite/migrations/<domain>.sql`
 
 ```sql
 CREATE TABLE IF NOT EXISTS <domain>s (
@@ -28,7 +48,7 @@ CREATE TABLE IF NOT EXISTS <domain>s (
 );
 ```
 
-### `infra/sqlite/queries/<domain>.sql`
+### `pkg/sqlite/queries/<domain>.sql`
 
 ```sql
 -- name: Create<Domain> :one
@@ -56,223 +76,391 @@ go tool sqlc generate
 go build ./...
 ```
 
-Also add the embed directive in `infra/sqlite/migrate.go`:
-```go
-//go:embed migrations/<domain>.sql
-var <domain>Schema string
-```
-And apply it in `Migrate()`.
-
 ---
 
-## Step 2 — Domain layer
+## Step 2 — model/ layer
 
-### `domain/<domain>/entity.go`
-
-```go
-package <domain>
-
-import "time"
-
-// <Domain> is the core domain entity.
-type <Domain> struct {
-    ID        string    `json:"id"         example:"a1b2c3d4"`
-    Name      string    `json:"name"       example:"Alice"`
-    CreatedAt time.Time `json:"created_at" example:"2024-01-01T00:00:00Z"`
-}
-
-type Create<Domain>Input struct {
-    Name string
-}
-
-type Update<Domain>Input struct {
-    Name string
-}
-```
-
-### `domain/<domain>/errors.go`
+### `internal/<domain>/model/errors.go`
 
 ```go
-package <domain>
+package <domain>model
 
 import "errors"
 
+// ErrNotFound indicates that the requested <domain> does not exist.
 var ErrNotFound = errors.New("<domain>: not found")
 ```
 
-### `domain/<domain>/port.go`
+### `internal/<domain>/model/dto.go`
 
 ```go
-package <domain>
+package <domain>model
 
-import "context"
-
-type Repository interface {
-    Create(ctx context.Context, u *<Domain>) error
-    List(ctx context.Context) ([]*<Domain>, error)
-    GetByID(ctx context.Context, id string) (*<Domain>, error)
-    Update(ctx context.Context, u *<Domain>) error
-    Delete(ctx context.Context, id string) error
-}
-```
-
-### `domain/<domain>/service.go`
-
-```go
-package <domain>
-
-import (
-    "context"
-    "fmt"
-
-    "go.opentelemetry.io/otel/trace"
-)
-
-type <Domain>Svc struct {
-    repo   Repository
-    tracer trace.Tracer
+// Create<Domain>Request is the validated input for creating a new <domain>.
+type Create<Domain>Request struct {
+    Name string `json:"name" validate:"required,min=1,max=100" example:"Alice"`
 }
 
-func NewService(repo Repository, tracer trace.Tracer) *<Domain>Svc {
-    return &<Domain>Svc{repo: repo, tracer: tracer}
-}
-
-func (s *<Domain>Svc) Create<Domain>(ctx context.Context, in Create<Domain>Input) (*<Domain>, error) {
-    ctx, span := s.tracer.Start(ctx, "<domain>Svc.Create<Domain>")
-    defer span.End()
-    // ... ID generation, repo.Create, return
+// Update<Domain>Request is the validated input for updating an existing <domain>.
+type Update<Domain>Request struct {
+    Name string `json:"name" validate:"omitempty,min=1,max=100" example:"Alice"`
 }
 ```
 
 ---
 
-## Step 3 — Adapter layer
+## Step 3 — core/ layer
 
-### `adapter/<domain>/repository.go`
+### `internal/<domain>/core/<domain>.go`
 
 ```go
-package <domain>
+package <domain>core
+
+import (
+    "errors"
+    <domain>model "restful-boilerplate/internal/<domain>/model"
+)
+
+// ErrNotFound is returned when a requested <domain> does not exist.
+var ErrNotFound = errors.New("<domain>: not found")
+
+// Create<Domain>Input is the input for creating a <domain>.
+type Create<Domain>Input = <domain>model.Create<Domain>Request
+
+// Update<Domain>Input is the input for updating a <domain>.
+type Update<Domain>Input = <domain>model.Update<Domain>Request
+```
+
+### `internal/<domain>/core/service.go`
+
+```go
+package <domain>core
 
 import (
     "context"
     "database/sql"
     "errors"
     "fmt"
+    "time"
 
-    domain<domain> "restful-boilerplate/domain/<domain>"
-    sqlitedb "restful-boilerplate/infra/sqlite/db"
+    "go.opentelemetry.io/otel/codes"
+    "go.opentelemetry.io/otel/trace"
+
+    "restful-boilerplate/internal/shared"
+    sqlitedb "restful-boilerplate/pkg/sqlite/db"
 )
 
-type SQLite struct {
-    q *sqlitedb.Queries
+// Service orchestrates <domain> use-cases on top of sqlitedb.Queries.
+type Service struct {
+    q      *sqlitedb.Queries
+    tracer trace.Tracer
 }
 
-func NewSQLite(db *sql.DB) *SQLite {
-    return &SQLite{q: sqlitedb.New(db)}
+// NewService creates a Service backed by q and traced via tracer.
+func NewService(q *sqlitedb.Queries, tracer trace.Tracer) *Service {
+    return &Service{q: q, tracer: tracer}
 }
 
-// Create inserts a new <domain> into SQLite.
-func (r *SQLite) Create(ctx context.Context, u *domain<domain>.<Domain>) error {
-    row, err := r.q.Create<Domain>(ctx, sqlitedb.Create<Domain>Params{
-        ID: u.ID, Name: u.Name, CreatedAt: u.CreatedAt,
+func (s *Service) Create<Domain>(ctx context.Context, in Create<Domain>Input) (*sqlitedb.<Domain>, error) {
+    ctx, span := s.tracer.Start(ctx, "<domain>.Create<Domain>")
+    defer span.End()
+
+    id, err := shared.GenerateID()
+    if err != nil {
+        span.RecordError(err)
+        span.SetStatus(codes.Error, err.Error())
+        return nil, fmt.Errorf("generate id: %w", err)
+    }
+
+    row, err := s.q.Create<Domain>(ctx, sqlitedb.Create<Domain>Params{
+        ID: id, Name: in.Name, CreatedAt: time.Now(),
     })
     if err != nil {
-        return fmt.Errorf("create <domain>: %w", err)
+        span.RecordError(err)
+        span.SetStatus(codes.Error, err.Error())
+        return nil, fmt.Errorf("create<Domain>: %w", err)
     }
-    *u = *to<Domain>(row)
+    return &row, nil
+}
+
+func (s *Service) Get<Domain>ByID(ctx context.Context, id string) (*sqlitedb.<Domain>, error) {
+    ctx, span := s.tracer.Start(ctx, "<domain>.Get<Domain>ByID")
+    defer span.End()
+
+    row, err := s.q.Get<Domain>ByID(ctx, id)
+    if err != nil {
+        if errors.Is(err, sql.ErrNoRows) {
+            return nil, ErrNotFound
+        }
+        span.RecordError(err)
+        span.SetStatus(codes.Error, err.Error())
+        return nil, fmt.Errorf("get<Domain>ByID: %w", err)
+    }
+    return &row, nil
+}
+
+func (s *Service) List<Domain>s(ctx context.Context) ([]*sqlitedb.<Domain>, error) {
+    ctx, span := s.tracer.Start(ctx, "<domain>.List<Domain>s")
+    defer span.End()
+
+    rows, err := s.q.List<Domain>s(ctx)
+    if err != nil {
+        span.RecordError(err)
+        span.SetStatus(codes.Error, err.Error())
+        return nil, fmt.Errorf("list<Domain>s: %w", err)
+    }
+    out := make([]*sqlitedb.<Domain>, 0, len(rows))
+    for i := range rows {
+        out = append(out, &rows[i])
+    }
+    return out, nil
+}
+
+func (s *Service) Update<Domain>(ctx context.Context, id string, in Update<Domain>Input) (*sqlitedb.<Domain>, error) {
+    ctx, span := s.tracer.Start(ctx, "<domain>.Update<Domain>")
+    defer span.End()
+
+    existing, err := s.Get<Domain>ByID(ctx, id)
+    if err != nil {
+        return nil, err
+    }
+    if in.Name != "" {
+        existing.Name = in.Name
+    }
+    row, err := s.q.Update<Domain>(ctx, sqlitedb.Update<Domain>Params{
+        ID: id, Name: existing.Name,
+    })
+    if err != nil {
+        if errors.Is(err, sql.ErrNoRows) {
+            return nil, ErrNotFound
+        }
+        span.RecordError(err)
+        span.SetStatus(codes.Error, err.Error())
+        return nil, fmt.Errorf("update<Domain>: %w", err)
+    }
+    return &row, nil
+}
+
+func (s *Service) Delete<Domain>(ctx context.Context, id string) error {
+    ctx, span := s.tracer.Start(ctx, "<domain>.Delete<Domain>")
+    defer span.End()
+
+    result, err := s.q.Delete<Domain>(ctx, id)
+    if err != nil {
+        span.RecordError(err)
+        span.SetStatus(codes.Error, err.Error())
+        return fmt.Errorf("delete<Domain>: %w", err)
+    }
+    n, err := result.RowsAffected()
+    if err != nil {
+        return fmt.Errorf("delete<Domain> rows affected: %w", err)
+    }
+    if n == 0 {
+        return ErrNotFound
+    }
     return nil
 }
-
-// ... other methods follow same pattern
-// GetByID: map sql.ErrNoRows → domain<domain>.ErrNotFound
-// Delete: check RowsAffected == 0 → domain<domain>.ErrNotFound
 ```
 
-### `adapter/<domain>/dto.go`
+---
+
+## Step 4 — mapping/ layer
+
+### `internal/<domain>/mapping/mapping.go`
 
 ```go
-package <domain>
+// Package <domain>mapping provides type conversions for the <domain> domain.
+package <domain>mapping
 
-type Create<Domain>Request struct {
-    Name string `json:"name" validate:"required,min=1,max=100" example:"Alice"`
+import (
+    "time"
+    sqlitedb "restful-boilerplate/pkg/sqlite/db"
+)
+
+// <Domain>Response is the HTTP JSON response shape for a <domain>.
+type <Domain>Response struct {
+    ID        string    `json:"id"`
+    Name      string    `json:"name"`
+    CreatedAt time.Time `json:"created_at"`
 }
 
-type Update<Domain>Request struct {
-    Name string `json:"name" validate:"omitempty,min=1,max=100" example:"Alice"`
+// ToResponse converts a sqlitedb.<Domain> DB model to a <Domain>Response.
+func ToResponse(d sqlitedb.<Domain>) <Domain>Response {
+    return <Domain>Response{ID: d.ID, Name: d.Name, CreatedAt: d.CreatedAt}
 }
 ```
 
-### `adapter/<domain>/module.go`
+---
+
+## Step 5 — adapter/ layer
+
+### `internal/<domain>/adapter/http.go`
 
 ```go
+// Package <domain>adapter handles HTTP requests for the <domain> domain.
+package <domain>adapter
+
+import (
+    "encoding/json"
+    "errors"
+    "net/http"
+
+    "restful-boilerplate/internal/app"
+    <domain>core "restful-boilerplate/internal/<domain>/core"
+    <domain>mapping "restful-boilerplate/internal/<domain>/mapping"
+    <domain>model "restful-boilerplate/internal/<domain>/model"
+    "restful-boilerplate/pkg/http"
+)
+
+// HTTPAdapter handles HTTP requests for the <domain> domain.
+type HTTPAdapter struct {
+    svc *<domain>core.Service
+    val app.Validator
+}
+
+// NewHTTPAdapter creates a new HTTPAdapter.
+func NewHTTPAdapter(svc *<domain>core.Service, val app.Validator) *HTTPAdapter {
+    return &HTTPAdapter{svc: svc, val: val}
+}
+
+// List<Domain>sHandler returns all <domain>s.
+func (m *HTTPAdapter) List<Domain>sHandler(w http.ResponseWriter, r *http.Request) {
+    items, err := m.svc.List<Domain>s(r.Context())
+    if err != nil {
+        router.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+        return
+    }
+    resp := make([]<domain>mapping.<Domain>Response, 0, len(items))
+    for _, d := range items {
+        resp = append(resp, <domain>mapping.ToResponse(*d))
+    }
+    router.WriteJSON(w, http.StatusOK, resp)
+}
+
+// Create<Domain>Handler creates a new <domain>.
+func (m *HTTPAdapter) Create<Domain>Handler(w http.ResponseWriter, r *http.Request) {
+    var req <domain>model.Create<Domain>Request
+    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+        router.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+        return
+    }
+    if err := m.val.Validate(&req); err != nil {
+        router.WriteJSON(w, http.StatusUnprocessableEntity, err)
+        return
+    }
+    d, err := m.svc.Create<Domain>(r.Context(), req)
+    if err != nil {
+        router.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+        return
+    }
+    router.WriteJSON(w, http.StatusCreated, <domain>mapping.ToResponse(*d))
+}
+
+// Get<Domain>ByIDHandler gets a <domain> by ID.
+func (m *HTTPAdapter) Get<Domain>ByIDHandler(w http.ResponseWriter, r *http.Request) {
+    d, err := m.svc.Get<Domain>ByID(r.Context(), r.PathValue("id"))
+    if err != nil {
+        if errors.Is(err, <domain>core.ErrNotFound) {
+            router.WriteJSON(w, http.StatusNotFound, map[string]string{"error": "<domain> not found"})
+            return
+        }
+        router.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+        return
+    }
+    router.WriteJSON(w, http.StatusOK, <domain>mapping.ToResponse(*d))
+}
+
+// Update<Domain>Handler updates a <domain>.
+func (m *HTTPAdapter) Update<Domain>Handler(w http.ResponseWriter, r *http.Request) {
+    var req <domain>model.Update<Domain>Request
+    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+        router.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+        return
+    }
+    if err := m.val.Validate(&req); err != nil {
+        router.WriteJSON(w, http.StatusUnprocessableEntity, err)
+        return
+    }
+    d, err := m.svc.Update<Domain>(r.Context(), r.PathValue("id"), req)
+    if err != nil {
+        if errors.Is(err, <domain>core.ErrNotFound) {
+            router.WriteJSON(w, http.StatusNotFound, map[string]string{"error": "<domain> not found"})
+            return
+        }
+        router.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+        return
+    }
+    router.WriteJSON(w, http.StatusOK, <domain>mapping.ToResponse(*d))
+}
+
+// Delete<Domain>Handler deletes a <domain>.
+func (m *HTTPAdapter) Delete<Domain>Handler(w http.ResponseWriter, r *http.Request) {
+    if err := m.svc.Delete<Domain>(r.Context(), r.PathValue("id")); err != nil {
+        if errors.Is(err, <domain>core.ErrNotFound) {
+            router.WriteJSON(w, http.StatusNotFound, map[string]string{"error": "<domain> not found"})
+            return
+        }
+        router.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+        return
+    }
+    w.WriteHeader(http.StatusNoContent)
+}
+```
+
+---
+
+## Step 6 — module.go (domain root)
+
+### `internal/<domain>/module.go`
+
+```go
+// Package <domain> registers the <domain> module.
 package <domain>
 
 import (
-    domain<domain> "restful-boilerplate/domain/<domain>"
-    router "restful-boilerplate/infra/http"
+    "restful-boilerplate/internal/app"
+    <domain>adapter "restful-boilerplate/internal/<domain>/adapter"
+    <domain>core "restful-boilerplate/internal/<domain>/core"
+    router "restful-boilerplate/pkg/http"
 )
 
-type Validator interface {
-    Validate(i any) error
-}
-
+// Module exposes <domain> endpoints over HTTP.
 type Module struct {
-    svc *domain<domain>.<Domain>Svc
-    val Validator
+    httpAdapter *<domain>adapter.HTTPAdapter
 }
 
-func NewModule(svc *domain<domain>.<Domain>Svc, v Validator) *Module {
-    return &Module{svc: svc, val: v}
+// NewModule wires the <domain> service from the shared App container.
+func NewModule(a *app.App) *Module {
+    svc := <domain>core.NewService(a.Queries, a.Tracer.Tracer("<domain>"))
+    return &Module{httpAdapter: <domain>adapter.NewHTTPAdapter(svc, a.Validator)}
 }
 
+// RegisterRoutes mounts all <domain> endpoints onto g.
 func (m *Module) RegisterRoutes(g *router.Group) {
-    g.GET("/", m.list<Domain>sHandler)
-    g.POST("/", m.create<Domain>Handler)
-    g.GET("/{id}", m.get<Domain>ByIDHandler)
-    g.PUT("/{id}", m.update<Domain>Handler)
-    g.DELETE("/{id}", m.delete<Domain>Handler)
-}
-```
-
-### `adapter/<domain>/handler.go`
-
-Handlers with swag annotations. Map `<domain>.ErrNotFound` → 404:
-
-```go
-func (m *Module) get<Domain>ByIDHandler(w http.ResponseWriter, r *http.Request) {
-    u, err := m.svc.Get<Domain>ByID(r.Context(), r.PathValue("id"))
-    if err != nil {
-        if errors.Is(err, domain<domain>.ErrNotFound) {
-            http.Error(w, `{"error":"<domain> not found"}`, http.StatusNotFound)
-            return
-        }
-        http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
-        return
-    }
-    router.WriteJSON(w, http.StatusOK, u)
+    g.GET("/", m.httpAdapter.List<Domain>sHandler)
+    g.POST("/", m.httpAdapter.Create<Domain>Handler)
+    g.GET("/{id}", m.httpAdapter.Get<Domain>ByIDHandler)
+    g.PUT("/{id}", m.httpAdapter.Update<Domain>Handler)
+    g.DELETE("/{id}", m.httpAdapter.Delete<Domain>Handler)
 }
 ```
 
 ---
 
-## Step 4 — Wire into cmd/http/main.go
-
-Inside the versioned group in `main()`:
+## Step 7 — Wire into cmd/http/main.go
 
 ```go
-r.Group("/v1", func(g *router.Group) {
-    g.Prefix("/api")
+import (
+    "<domain>" "restful-boilerplate/internal/<domain>"
+)
 
-    // <Domain> domain register
-    <domain>Repo := <domain>adapter.NewSQLite(db)
-    <domain>Svc := <domain>.NewService(<domain>Repo, otel.Tracer("<domain>"))
-    g.Group("/<domain>s", <domain>adapter.NewModule(<domain>Svc, v).RegisterRoutes)
-})
+// Inside r.Group("/v1", ...):
+g.Group("/<domain>s", <domain>.NewModule(a).RegisterRoutes)
 ```
 
 ---
 
-## Step 5 — Regenerate Swagger docs
+## Step 8 — Regenerate Swagger docs
 
 ```bash
 go tool swag init -g cmd/http/main.go -o docs/
@@ -283,18 +471,15 @@ make check
 
 ## Checklist
 
-- [ ] `infra/sqlite/migrations/<domain>.sql` — CREATE TABLE
-- [ ] `infra/sqlite/queries/<domain>.sql` — CRUD queries with sqlc annotations
-- [ ] `go tool sqlc generate` — generates `infra/sqlite/db/<domain>.sql.go`
-- [ ] `infra/sqlite/migrate.go` — embed + apply new migration
-- [ ] `domain/<domain>/entity.go` — exported entity + input types
-- [ ] `domain/<domain>/errors.go` — ErrNotFound sentinel
-- [ ] `domain/<domain>/port.go` — Repository interface
-- [ ] `domain/<domain>/service.go` — Service with OTEL tracing
-- [ ] `adapter/<domain>/repository.go` — SQLite Repository adapter
-- [ ] `adapter/<domain>/dto.go` — request DTOs with validate + example tags
-- [ ] `adapter/<domain>/module.go` — Module + NewHandler + RegisterRoutes
-- [ ] `adapter/<domain>/handler.go` — handlers with swag annotations
-- [ ] `cmd/http/main.go` — wire repo → service → handler
-- [ ] `make swagger` — regenerate Swagger docs
-- [ ] `make check` — fmt + vet + lint + test all pass
+- [ ] `pkg/sqlite/migrations/<domain>.sql` — CREATE TABLE
+- [ ] `pkg/sqlite/queries/<domain>.sql` — CRUD queries with sqlc annotations
+- [ ] `go tool sqlc generate` + `go build ./...`
+- [ ] `internal/<domain>/model/errors.go` — ErrNotFound sentinel
+- [ ] `internal/<domain>/model/dto.go` — Create/UpdateXRequest with validate + example tags
+- [ ] `internal/<domain>/core/<domain>.go` — ErrNotFound + type aliases from model
+- [ ] `internal/<domain>/core/service.go` — Service + NewService + all CRUD methods
+- [ ] `internal/<domain>/mapping/mapping.go` — <Domain>Response + ToResponse
+- [ ] `internal/<domain>/adapter/http.go` — HTTPAdapter + exported handler methods
+- [ ] `internal/<domain>/module.go` — Module + NewModule(a *app.App) + RegisterRoutes
+- [ ] `cmd/http/main.go` — add group wiring (import domain root package)
+- [ ] `make swagger` + `make check`

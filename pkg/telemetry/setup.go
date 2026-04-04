@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"restful-boilerplate/infra/logger"
+	"restful-boilerplate/pkg/logger"
 )
 
 // SetupAll initialises OpenTelemetry tracing and structured log file output.

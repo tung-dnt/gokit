@@ -13,18 +13,19 @@ import (
 	"go.opentelemetry.io/otel"
 	_ "modernc.org/sqlite"
 
-	useradapter "restful-boilerplate/adapter/user"
 	_ "restful-boilerplate/docs"
-	"restful-boilerplate/domain/user"
-	"restful-boilerplate/infra/config"
-	router "restful-boilerplate/infra/http"
-	"restful-boilerplate/infra/logger"
-	"restful-boilerplate/infra/metrics"
-	"restful-boilerplate/infra/otelhttp"
-	"restful-boilerplate/infra/recovery"
-	infradb "restful-boilerplate/infra/sqlite"
-	"restful-boilerplate/infra/telemetry"
-	cv "restful-boilerplate/infra/validator"
+	"restful-boilerplate/internal/app"
+	"restful-boilerplate/internal/user"
+	"restful-boilerplate/pkg/config"
+	router "restful-boilerplate/pkg/http"
+	"restful-boilerplate/pkg/logger"
+	"restful-boilerplate/pkg/metrics"
+	"restful-boilerplate/pkg/otelhttp"
+	"restful-boilerplate/pkg/recovery"
+	"restful-boilerplate/pkg/sqlite"
+	sqlitedb "restful-boilerplate/pkg/sqlite/db"
+	"restful-boilerplate/pkg/telemetry"
+	cv "restful-boilerplate/pkg/validator"
 )
 
 // @title          Restful Boilerplate API
@@ -43,13 +44,22 @@ func main() {
 		os.Exit(1)
 	}
 
-	db, err := infradb.OpenDB(ctx, "./data.db")
+	db, err := sqlite.OpenDB(ctx, "./data.db")
 	if err != nil {
 		slog.Error("failed to open database", "error", err)
 		stopTracing()
 		stop()
 		os.Exit(1)
 	}
+
+	if err = sqlite.Migrate(ctx, db); err != nil {
+		slog.Error("failed to migrate database", "error", err)
+		stopTracing()
+		_ = db.Close() //nolint:errcheck // best-effort close on error path
+		stop()
+		os.Exit(1)
+	}
+
 	// All early-exit paths done; defers are safe from here.
 	defer stop()
 	defer stopTracing()
@@ -57,6 +67,12 @@ func main() {
 
 	v := cv.New()
 	metric := metrics.New()
+
+	a := &app.App{
+		Queries:   sqlitedb.New(db),
+		Validator: v,
+		Tracer:    otel.GetTracerProvider(),
+	}
 
 	r := router.NewRouter()
 	r.Use(metric.Middleware)
@@ -68,11 +84,8 @@ func main() {
 	r.Group("/v1", func(g *router.Group) {
 		g.Prefix("/api")
 		g.ANY("/swagger/", httpSwagger.WrapHandler)
-
 		// User domain register
-		userRepo := useradapter.NewSQLite(db)
-		userSvc := user.NewService(userRepo, otel.Tracer("user"))
-		g.Group("/users", useradapter.NewModule(userSvc, v).RegisterRoutes)
+		g.Group("/users", user.NewModule(a).RegisterRoutes)
 	})
 
 	addr := net.JoinHostPort(cfg.Server.Host, cfg.Server.Port)

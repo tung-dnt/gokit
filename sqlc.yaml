@@ -1,12 +1,12 @@
 version: "2"
 sql:
   - engine: "sqlite"
-    queries: "infra/sqlite/queries"
-    schema: "infra/sqlite/migrations"
+    queries: "pkg/sqlite/queries"
+    schema: "pkg/sqlite/migrations"
     gen:
       go:
         package: "sqlitedb"
-        out: "infra/sqlite/db"
+        out: "pkg/sqlite/db"
         overrides:
           - db_type: "DATETIME"
             go_type: "time.Time"

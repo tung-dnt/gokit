@@ -23,14 +23,14 @@ If a file path was provided, read the task file using the Read tool. If only a t
 
 Read the Obsidian task file. Extract:
 - **Goal**: what this task accomplishes
-- **Domain**: which `domain/<domain>/` package is affected
+- **Domain**: which `internal/<domain>/` package is affected
 - **Implementation steps**: the ordered list from the task body
 - **Acceptance criteria**: the checklist
 
 Display a summary to the user:
 ```
 ## Task: <goal>
-Domain: domain/<domain>/ + adapter/<domain>/
+Domain: internal/<domain>/
 Steps: <N> implementation steps
 ```
 
@@ -57,9 +57,9 @@ Invoke the `tdd-guide` agent with:
 - The test plan produced by test-master in 2a
 
 The tdd-guide agent writes using project-specific patterns (in-memory SQLite, net/http httptest, table-driven):
-- `domain/<domain>/service_test.go` — table-driven tests for service methods (external test package)
-- `adapter/<domain>/handler_test.go` — HTTP handler tests via httptest + router
-- `adapter/<domain>/dto_test.go` — validator tag tests (if DTOs are new)
+- `internal/<domain>/service_test.go` — table-driven tests for service methods (external test package `<domain>_test`)
+- `internal/<domain>/handler_test.go` — HTTP handler tests via httptest + router (internal package `<domain>`)
+- `internal/<domain>/dto_test.go` — validator tag tests (if DTOs are new, internal package `<domain>`)
 
 **STOP here.** Do not implement anything yet.
 
@@ -71,8 +71,8 @@ Show the written tests to the user and ask:
 
 > "Here are the failing tests for this task. Please review:
 >
-> **Service tests:** `domain/<domain>/service_test.go`
-> **Handler tests:** `adapter/<domain>/handler_test.go`
+> **Service tests:** `internal/<domain>/service_test.go`
+> **Handler tests:** `internal/<domain>/handler_test.go`
 >
 > Do the test cases correctly capture the expected behaviour? Reply 'yes' to proceed with implementation, or request changes."
 
@@ -87,23 +87,23 @@ On user approval, implement the minimum code to make the tests pass.
 Follow this order (matches the feature-planner schema-first approach):
 
 1. **DB + codegen** (if this task covers it):
-   - Write `infra/sqlite/migrations/<domain>.sql`
-   - Write `infra/sqlite/queries/<domain>.sql`
+   - Write `pkg/sqlite/migrations/<domain>.sql`
+   - Write `pkg/sqlite/queries/<domain>.sql`
    - Run: `go tool sqlc generate`
    - Verify: `go build ./...`
 
-2. **Entity + DTOs** (if this task covers it):
-   - Write `domain/<domain>/entity.go` (entity + input types + ErrNotFound)
-   - Write `adapter/<domain>/dto.go` (validate + example tags)
+2. **Domain types + DTOs** (if this task covers it):
+   - Write `internal/<domain>/<domain>.go` (entity + input types + ErrNotFound)
+   - Write `internal/<domain>/dto.go` (validate + example tags)
 
 3. **Service** (if this task covers it):
-   - Write `domain/<domain>/service.go`
-   - Run: `go test ./domain/<domain>/... -run TestXxx -v`
+   - Write `internal/<domain>/service.go`
+   - Run: `go test ./internal/<domain>/... -run TestXxx -v`
 
 4. **Route + Handlers** (if this task covers it):
-   - Write `adapter/<domain>/module.go`
-   - Write `adapter/<domain>/handler.go` (with swag annotations)
-   - Run: `go test ./adapter/<domain>/... -run TestXxx -v`
+   - Write `internal/<domain>/module.go` (NewModule(a *app.App))
+   - Write `internal/<domain>/handler.go` (with swag annotations)
+   - Run: `go test ./internal/<domain>/... -run TestXxx -v`
 
 5. **Wire-up + Swagger** (if this task covers it):
    - Update `cmd/http/main.go` — add domain wiring
@@ -137,7 +137,7 @@ Do NOT mark the task done until `make check` exits with code 0.
 
 After `make check` passes, invoke the `go-code-reviewer` agent **in background** (`run_in_background: true`):
 
-Provide it with the domain paths: `domain/<domain>/` and `adapter/<domain>/`
+Provide it with the domain path: `internal/<domain>/`
 
 Continue to the next step while the review runs.
 

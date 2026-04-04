@@ -69,7 +69,7 @@ These are already set — only update if the API version or base path changes:
 
 ## `example` tags on structs
 
-Add `example` struct tags on entity fields (in `domain/<domain>/entity.go`) and DTOs so Swagger UI shows realistic payloads:
+Add `example` struct tags on entity fields (in `internal/<domain>/model/entity.go`) and DTOs so Swagger UI shows realistic payloads:
 
 ```go
 type User struct {
