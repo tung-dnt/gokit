@@ -8,6 +8,7 @@ import (
 	"go.opentelemetry.io/otel/trace/noop"
 
 	usercore "restful-boilerplate/internal/user/core"
+	usermodel "restful-boilerplate/internal/user/model"
 	pgdb "restful-boilerplate/pkg/postgres/db"
 	"restful-boilerplate/pkg/testutil"
 )
@@ -23,7 +24,7 @@ func TestCreateUser(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()
 
-	u, err := svc.CreateUser(ctx, usercore.CreateUserInput{Name: "Alice", Email: "alice@example.com"})
+	u, err := svc.CreateUser(ctx, usermodel.CreateUserRequest{Name: "Alice", Email: "alice@example.com"})
 	if err != nil {
 		t.Fatalf("CreateUser() error = %v", err)
 	}
@@ -48,12 +49,12 @@ func TestCreateUser_DuplicateEmail(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()
 
-	_, err := svc.CreateUser(ctx, usercore.CreateUserInput{Name: "Alice", Email: "dup@example.com"})
+	_, err := svc.CreateUser(ctx, usermodel.CreateUserRequest{Name: "Alice", Email: "dup@example.com"})
 	if err != nil {
 		t.Fatalf("first CreateUser() error = %v", err)
 	}
 
-	_, err = svc.CreateUser(ctx, usercore.CreateUserInput{Name: "Bob", Email: "dup@example.com"})
+	_, err = svc.CreateUser(ctx, usermodel.CreateUserRequest{Name: "Bob", Email: "dup@example.com"})
 	if err == nil {
 		t.Fatal("expected error for duplicate email")
 	}
@@ -79,8 +80,8 @@ func TestListUsers_Multiple(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()
 
-	_, _ = svc.CreateUser(ctx, usercore.CreateUserInput{Name: "Alice", Email: "alice@example.com"})
-	_, _ = svc.CreateUser(ctx, usercore.CreateUserInput{Name: "Bob", Email: "bob@example.com"})
+	_, _ = svc.CreateUser(ctx, usermodel.CreateUserRequest{Name: "Alice", Email: "alice@example.com"})
+	_, _ = svc.CreateUser(ctx, usermodel.CreateUserRequest{Name: "Bob", Email: "bob@example.com"})
 
 	users, err := svc.ListUsers(ctx)
 	if err != nil {
@@ -95,7 +96,7 @@ func TestGetUserByID_Found(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()
 
-	created, _ := svc.CreateUser(ctx, usercore.CreateUserInput{Name: "Alice", Email: "alice@example.com"})
+	created, _ := svc.CreateUser(ctx, usermodel.CreateUserRequest{Name: "Alice", Email: "alice@example.com"})
 
 	u, err := svc.GetUserByID(ctx, created.ID)
 	if err != nil {
@@ -123,9 +124,9 @@ func TestUpdateUser_BothFields(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()
 
-	created, _ := svc.CreateUser(ctx, usercore.CreateUserInput{Name: "Alice", Email: "alice@example.com"})
+	created, _ := svc.CreateUser(ctx, usermodel.CreateUserRequest{Name: "Alice", Email: "alice@example.com"})
 
-	u, err := svc.UpdateUser(ctx, created.ID, usercore.UpdateUserInput{Name: "Bob", Email: "bob@example.com"})
+	u, err := svc.UpdateUser(ctx, created.ID, usermodel.UpdateUserRequest{Name: "Bob", Email: "bob@example.com"})
 	if err != nil {
 		t.Fatalf("UpdateUser() error = %v", err)
 	}
@@ -141,9 +142,9 @@ func TestUpdateUser_NameOnly(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()
 
-	created, _ := svc.CreateUser(ctx, usercore.CreateUserInput{Name: "Alice", Email: "alice@example.com"})
+	created, _ := svc.CreateUser(ctx, usermodel.CreateUserRequest{Name: "Alice", Email: "alice@example.com"})
 
-	u, err := svc.UpdateUser(ctx, created.ID, usercore.UpdateUserInput{Name: "Bob"})
+	u, err := svc.UpdateUser(ctx, created.ID, usermodel.UpdateUserRequest{Name: "Bob"})
 	if err != nil {
 		t.Fatalf("UpdateUser() error = %v", err)
 	}
@@ -159,9 +160,9 @@ func TestUpdateUser_EmailOnly(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()
 
-	created, _ := svc.CreateUser(ctx, usercore.CreateUserInput{Name: "Alice", Email: "alice@example.com"})
+	created, _ := svc.CreateUser(ctx, usermodel.CreateUserRequest{Name: "Alice", Email: "alice@example.com"})
 
-	u, err := svc.UpdateUser(ctx, created.ID, usercore.UpdateUserInput{Email: "new@example.com"})
+	u, err := svc.UpdateUser(ctx, created.ID, usermodel.UpdateUserRequest{Email: "new@example.com"})
 	if err != nil {
 		t.Fatalf("UpdateUser() error = %v", err)
 	}
@@ -177,9 +178,9 @@ func TestUpdateUser_EmptyInput(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()
 
-	created, _ := svc.CreateUser(ctx, usercore.CreateUserInput{Name: "Alice", Email: "alice@example.com"})
+	created, _ := svc.CreateUser(ctx, usermodel.CreateUserRequest{Name: "Alice", Email: "alice@example.com"})
 
-	u, err := svc.UpdateUser(ctx, created.ID, usercore.UpdateUserInput{})
+	u, err := svc.UpdateUser(ctx, created.ID, usermodel.UpdateUserRequest{})
 	if err != nil {
 		t.Fatalf("UpdateUser() error = %v", err)
 	}
@@ -195,7 +196,7 @@ func TestUpdateUser_NotFound(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()
 
-	_, err := svc.UpdateUser(ctx, "nonexistent", usercore.UpdateUserInput{Name: "Bob"})
+	_, err := svc.UpdateUser(ctx, "nonexistent", usermodel.UpdateUserRequest{Name: "Bob"})
 	if !errors.Is(err, usercore.ErrNotFound) {
 		t.Errorf("expected ErrNotFound, got %v", err)
 	}
@@ -205,7 +206,7 @@ func TestDeleteUser_Success(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()
 
-	created, _ := svc.CreateUser(ctx, usercore.CreateUserInput{Name: "Alice", Email: "alice@example.com"})
+	created, _ := svc.CreateUser(ctx, usermodel.CreateUserRequest{Name: "Alice", Email: "alice@example.com"})
 
 	if err := svc.DeleteUser(ctx, created.ID); err != nil {
 		t.Fatalf("DeleteUser() error = %v", err)

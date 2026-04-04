@@ -15,7 +15,7 @@ func OpenDB(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
 		return nil, fmt.Errorf("open db: %w", err)
 	}
 
-	if err := pool.Ping(ctx); err != nil {
+	if err = pool.Ping(ctx); err != nil {
 		pool.Close()
 		return nil, fmt.Errorf("ping db: %w", err)
 	}

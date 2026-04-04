@@ -32,8 +32,8 @@ dev: ## Run HTTP server with hot-reload (air)
 	LOG_FORMAT=pretty go tool air
 
 .PHONY: migrate
-migrate: ## Apply DB migrations (default: ./data.db)
-	go run ./cmd/migrate -db $(DB_PATH)
+migrate: ## Apply PostgreSQL DB migrations
+	go run ./cmd/postgres-migration
 
 # ─── Build ───────────────────────────────────────────────────────────────────
 

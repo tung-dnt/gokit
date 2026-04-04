@@ -28,13 +28,13 @@ func SetupPgTestDB(t *testing.T) *pgxpool.Pool {
 		t.Fatalf("open pg test db: %v", err)
 	}
 
-	if err := postgres.Migrate(ctx, pool); err != nil {
+	if err = postgres.Migrate(ctx, pool); err != nil {
 		pool.Close()
 		t.Fatalf("migrate pg test db: %v", err)
 	}
 
 	// Clean state before each test so parallel-unsafe tests don't bleed.
-	if _, err := pool.Exec(ctx, "DELETE FROM users"); err != nil {
+	if _, err = pool.Exec(ctx, "DELETE FROM users"); err != nil {
 		pool.Close()
 		t.Fatalf("truncate users: %v", err)
 	}

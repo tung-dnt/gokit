@@ -3,17 +3,16 @@ package usercore
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 
 	"restful-boilerplate/internal/shared"
 	"restful-boilerplate/pkg/logger"
 	pgdb "restful-boilerplate/pkg/postgres/db"
+	"restful-boilerplate/pkg/telemetry"
 )
 
 // Service orchestrates user use-cases on top of a pgdb.Queries.
@@ -36,9 +35,7 @@ func (s *Service) CreateUser(ctx context.Context, in CreateUserInput) (*pgdb.Use
 
 	id, err := shared.GenerateID()
 	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
-		return nil, fmt.Errorf("generate id: %w", err)
+		return nil, telemetry.SpanErr(span, err, "generate id")
 	}
 
 	row, err := s.q.CreateUser(ctx, pgdb.CreateUserParams{
@@ -48,9 +45,7 @@ func (s *Service) CreateUser(ctx context.Context, in CreateUserInput) (*pgdb.Use
 		CreatedAt: time.Now(),
 	})
 	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
-		return nil, fmt.Errorf("createUser: %w", err)
+		return nil, telemetry.SpanErr(span, err, "createUser")
 	}
 	return &row, nil
 }
@@ -79,9 +74,7 @@ func (s *Service) UpdateUser(ctx context.Context, id string, in UpdateUserInput)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrNotFound
 		}
-		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
-		return nil, fmt.Errorf("updateUser: %w", err)
+		return nil, telemetry.SpanErr(span, err, "updateUser")
 	}
 	return &row, nil
 }
@@ -93,9 +86,7 @@ func (s *Service) DeleteUser(ctx context.Context, id string) error {
 
 	result, err := s.q.DeleteUser(ctx, id)
 	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
-		return fmt.Errorf("deleteUser: %w", err)
+		return telemetry.SpanErr(span, err, "deleteUser")
 	}
 	if result.RowsAffected() == 0 {
 		return ErrNotFound
@@ -110,9 +101,7 @@ func (s *Service) ListUsers(ctx context.Context) ([]*pgdb.User, error) {
 
 	rows, err := s.q.ListUsers(ctx)
 	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
-		return nil, fmt.Errorf("listUsers: %w", err)
+		return nil, telemetry.SpanErr(span, err, "listUsers")
 	}
 
 	users := make([]*pgdb.User, 0, len(rows))
@@ -132,9 +121,7 @@ func (s *Service) GetUserByID(ctx context.Context, id string) (*pgdb.User, error
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrNotFound
 		}
-		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
-		return nil, fmt.Errorf("getUserByID: %w", err)
+		return nil, telemetry.SpanErr(span, err, "getUserByID")
 	}
 	return &row, nil
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
@@ -34,34 +35,28 @@ import (
 // @BasePath       /api
 // @schemes        http
 func main() {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
-	cfg := config.Load(os.Getenv)
-	stopTracing, err := telemetry.SetupAll(ctx, "./logs/app.log", cfg.LogFormat)
-	if err != nil {
-		slog.Error("failed to setup tracing", "error", err)
-		stop()
+	if err := run(); err != nil {
+		slog.Error(err.Error())
 		os.Exit(1)
 	}
+}
+
+func run() error {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+
+	cfg := config.Load(os.Getenv)
+
+	stopTracing, err := telemetry.SetupAll(ctx, "./logs/app.log", cfg.LogFormat)
+	if err != nil {
+		return fmt.Errorf("setup tracing: %w", err)
+	}
+	defer stopTracing()
 
 	pool, err := postgres.OpenDB(ctx, cfg.DatabaseURL)
 	if err != nil {
-		slog.Error("failed to open database", "error", err)
-		stopTracing()
-		stop()
-		os.Exit(1)
+		return fmt.Errorf("open database: %w", err)
 	}
-
-	if err = postgres.Migrate(ctx, pool); err != nil {
-		slog.Error("failed to migrate database", "error", err)
-		stopTracing()
-		pool.Close()
-		stop()
-		os.Exit(1)
-	}
-
-	// All early-exit paths done; defers are safe from here.
-	defer stop()
-	defer stopTracing()
 	defer pool.Close()
 
 	v := cv.New()
@@ -83,7 +78,6 @@ func main() {
 	r.Group("/v1", func(g *router.Group) {
 		g.Prefix("/api")
 		g.ANY("/swagger/", httpSwagger.WrapHandler)
-		// User domain register
 		g.Group("/users", user.NewModule(a).RegisterRoutes)
 	})
 
@@ -97,4 +91,5 @@ func main() {
 	}
 
 	router.GracefulServe(ctx, httpServer, 10*time.Second)
+	return nil
 }
