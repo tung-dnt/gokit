@@ -2,33 +2,33 @@ package usercore
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 
 	"restful-boilerplate/internal/shared"
 	"restful-boilerplate/pkg/logger"
-	sqlitedb "restful-boilerplate/pkg/sqlite/db"
+	pgdb "restful-boilerplate/pkg/postgres/db"
 )
 
-// Service orchestrates user use-cases on top of a sqlitedb.Queries.
+// Service orchestrates user use-cases on top of a pgdb.Queries.
 type Service struct {
-	q      *sqlitedb.Queries
+	q      *pgdb.Queries
 	tracer trace.Tracer
 }
 
-// NewService creates a Svc backed by q and traced via tracer.
-func NewService(q *sqlitedb.Queries, tracer trace.Tracer) *Service {
+// NewService creates a Service backed by q and traced via tracer.
+func NewService(q *pgdb.Queries, tracer trace.Tracer) *Service {
 	return &Service{q: q, tracer: tracer}
 }
 
 // CreateUser creates a new user from the given input.
-func (s *Service) CreateUser(ctx context.Context, in CreateUserInput) (*sqlitedb.User, error) {
+func (s *Service) CreateUser(ctx context.Context, in CreateUserInput) (*pgdb.User, error) {
 	ctx, span := s.tracer.Start(ctx, "user.CreateUser")
 	defer span.End()
 
@@ -41,7 +41,7 @@ func (s *Service) CreateUser(ctx context.Context, in CreateUserInput) (*sqlitedb
 		return nil, fmt.Errorf("generate id: %w", err)
 	}
 
-	row, err := s.q.CreateUser(ctx, sqlitedb.CreateUserParams{
+	row, err := s.q.CreateUser(ctx, pgdb.CreateUserParams{
 		ID:        id,
 		Name:      in.Name,
 		Email:     in.Email,
@@ -56,7 +56,7 @@ func (s *Service) CreateUser(ctx context.Context, in CreateUserInput) (*sqlitedb
 }
 
 // UpdateUser applies a partial update to the user identified by id.
-func (s *Service) UpdateUser(ctx context.Context, id string, in UpdateUserInput) (*sqlitedb.User, error) {
+func (s *Service) UpdateUser(ctx context.Context, id string, in UpdateUserInput) (*pgdb.User, error) {
 	ctx, span := s.tracer.Start(ctx, "user.UpdateUser")
 	defer span.End()
 
@@ -70,13 +70,13 @@ func (s *Service) UpdateUser(ctx context.Context, id string, in UpdateUserInput)
 	if in.Email != "" {
 		existing.Email = in.Email
 	}
-	row, err := s.q.UpdateUser(ctx, sqlitedb.UpdateUserParams{
+	row, err := s.q.UpdateUser(ctx, pgdb.UpdateUserParams{
 		ID:    id,
 		Name:  existing.Name,
 		Email: existing.Email,
 	})
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrNotFound
 		}
 		span.RecordError(err)
@@ -97,18 +97,14 @@ func (s *Service) DeleteUser(ctx context.Context, id string) error {
 		span.SetStatus(codes.Error, err.Error())
 		return fmt.Errorf("deleteUser: %w", err)
 	}
-	n, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("deleteUser rows affected: %w", err)
-	}
-	if n == 0 {
+	if result.RowsAffected() == 0 {
 		return ErrNotFound
 	}
 	return nil
 }
 
 // ListUsers returns all users.
-func (s *Service) ListUsers(ctx context.Context) ([]*sqlitedb.User, error) {
+func (s *Service) ListUsers(ctx context.Context) ([]*pgdb.User, error) {
 	ctx, span := s.tracer.Start(ctx, "user.ListUsers")
 	defer span.End()
 
@@ -119,7 +115,7 @@ func (s *Service) ListUsers(ctx context.Context) ([]*sqlitedb.User, error) {
 		return nil, fmt.Errorf("listUsers: %w", err)
 	}
 
-	users := make([]*sqlitedb.User, 0, len(rows))
+	users := make([]*pgdb.User, 0, len(rows))
 	for i := range rows {
 		users = append(users, &rows[i])
 	}
@@ -127,13 +123,13 @@ func (s *Service) ListUsers(ctx context.Context) ([]*sqlitedb.User, error) {
 }
 
 // GetUserByID returns a single user or ErrNotFound.
-func (s *Service) GetUserByID(ctx context.Context, id string) (*sqlitedb.User, error) {
+func (s *Service) GetUserByID(ctx context.Context, id string) (*pgdb.User, error) {
 	ctx, span := s.tracer.Start(ctx, "user.GetUserByID")
 	defer span.End()
 
 	row, err := s.q.GetUserByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrNotFound
 		}
 		span.RecordError(err)

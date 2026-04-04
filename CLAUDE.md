@@ -2,9 +2,11 @@
 
 ## Project Overview
 
-A Go RESTful API boilerplate built on **net/http (stdlib) + SQLite + sqlc** with full observability (OpenTelemetry, Tempo, Loki, Grafana). Uses a 3-folder structure: `internal/` for business modules, `pkg/` for pure utilities, `infra/` for Docker/observability configs only. Each domain is split into four sub-packages: `adapter/`, `core/`, `mapping/`, `model/`.
+A Go RESTful API boilerplate built on **net/http (stdlib) + PostgreSQL + sqlc** with full observability (OpenTelemetry, Tempo, Loki, Grafana). Uses a 3-folder structure: `internal/` for business modules, `pkg/` for pure utilities, `infra/` for Docker/observability configs only. Each domain is split into four sub-packages: `adapter/`, `core/`, `mapping/`, `model/`.
 
-**Module:** `restful-boilerplate` | **Go:** 1.26.0 | **Deps:** modernc/sqlite, go-playground/validator, swaggo/swag
+**Module:** `restful-boilerplate` | **Go:** 1.26.0 | **Deps:** jackc/pgx/v5, go-playground/validator, swaggo/swag
+
+**Legacy:** `pkg/sqlite/` — SQLite code retained for reference; `modernc.org/sqlite` still in go.mod
 
 **Dev tools (via `go tool`):** `sqlc generate`, `swag init`, `air`, `golangci-lint`
 
@@ -26,7 +28,7 @@ internal/
       service.go           → Service struct + NewService(q, tracer) + all CRUD methods (consolidated)
       service_test.go      → External test package (package <domain>core_test)
     mapping/               → Response conversion layer — package <domain>mapping
-      mapping.go           → <Domain>Response struct + ToResponse(sqlitedb.<Domain>)
+      mapping.go           → <Domain>Response struct + ToResponse(pgdb.<Domain>)
     model/                 → Request/response types — package <domain>model
       dto.go               → Create/UpdateXRequest with validate + json + example tags
       dto_test.go          → Validator tag tests (internal package <domain>model)
@@ -53,7 +55,14 @@ pkg/                       → Pure utilities — NO business knowledge
   otelhttp/                → Custom net/http OTEL middleware
   telemetry/               → OTLP TracerProvider setup
   validator/               → Validator adapter (go-playground/validator)
-  testutil/                → Shared test helpers (SetupTestDB)
+  testutil/                → Shared test helpers (SetupPgTestDB for PostgreSQL, SetupTestDB for legacy SQLite)
+  postgres/                → PostgreSQL connection + migration infra
+    connection.go          → OpenDB() — pgxpool.Pool
+    migrate.go             → Migrate() with //go:embed
+    db/                    → sqlc-generated Go code (package pgdb)
+    queries/               → sqlc-annotated SQL query files
+    migrations/            → SQL CREATE TABLE files (TIMESTAMPTZ, $1 params)
+  sqlite/                  → Legacy SQLite layer (kept for reference)
 
 infra/                     → Docker/observability configs ONLY (no Go code)
   docker-compose.yml
@@ -79,25 +88,22 @@ Makefile                   → All dev tasks
 Simple layered structure with clear dependency rules:
 
 ```
-internal/<domain>/  → internal/app (App container) + pkg/sqlite/db + pkg/logger
-internal/app/       → pkg/sqlite/db (Queries) + pkg/validator (Validator interface)
+internal/<domain>/  → internal/app (App container) + pkg/postgres/db + pkg/logger
+internal/app/       → pkg/postgres/db (Queries) + pkg/validator (Validator interface)
 pkg/                → stdlib + external libs only (no business knowledge)
 infra/              → Docker/observability configs only (no Go code)
 ```
 
-No repository interface — the service uses `*sqlitedb.Queries` directly. Each domain has four sub-packages: `adapter/` (HTTP), `core/` (business logic), `mapping/` (response conversion), `model/` (DTOs). Dependency rule: `adapter/` imports `core/`, `mapping/`, `model/`; `core/` imports `model/`; `model/` imports nothing from the domain. No circular deps.
+No repository interface — the service uses `*pgdb.Queries` directly. Each domain has four sub-packages: `adapter/` (HTTP), `core/` (business logic), `mapping/` (response conversion), `model/` (DTOs). Dependency rule: `adapter/` imports `core/`, `mapping/`, `model/`; `core/` imports `model/`; `model/` imports nothing from the domain. No circular deps.
 
-**Wiring in cmd/http/main.go:**
+**Wiring in main.go:**
 ```go
-r := router.NewRouter()
-r.Use(metric.Middleware)
-r.Use(otelhttp.Middleware("restful-boilerplate"))
-r.Use(logger.Middleware)
-r.Use(recovery.Middleware)
-r.GET("/metrics", metric.Handler().ServeHTTP)
+pool, err := postgres.OpenDB(ctx, cfg.DatabaseURL)
+postgres.Migrate(ctx, pool)
+defer pool.Close()
 
 a := &app.App{
-    Queries:   sqlitedb.New(db),
+    Queries:   pgdb.New(pool),
     Validator: v,
     Tracer:    otel.GetTracerProvider(),
 }
@@ -109,19 +115,21 @@ r.Group("/v1", func(g *router.Group) {
 })
 ```
 
-To add a new domain: run `/new-domain` — it creates `internal/<domain>/` with all sub-packages and adds `g.Group("/<domain>s", <domain>.NewModule(a).RegisterRoutes)` to the v1 group in `cmd/http/main.go`.
+**Environment:** `DATABASE_URL` — defaults to `postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable`
+
+To add a new domain: run `/new-domain` — it creates `internal/<domain>/` with all sub-packages and adds `g.Group("/<domain>s", <domain>.NewModule(a).RegisterRoutes)` to the v1 group in `main.go`.
 
 ---
 
 ## Key Patterns
 
 - **Model layer** (`internal/<domain>/model/`, package `<domain>model`): Request DTOs (`Create<Domain>Request`, `Update<Domain>Request`) with `validate` + `json` + `example` tags in `dto.go`. `ErrNotFound` sentinel in `errors.go`. Validator tag tests in `dto_test.go` (package `<domain>model`).
-- **Core layer** (`internal/<domain>/core/`, package `<domain>core`): `ErrNotFound` + type aliases (`CreateXInput = model.CreateXRequest`) in `<domain>.go`. Consolidated `Service` struct + `NewService(q, tracer)` + all CRUD methods in `service.go`. All return `*sqlitedb.<Entity>` directly. OTEL tracing on every method. Service tests in `service_test.go` (package `<domain>core_test`).
-- **Mapping layer** (`internal/<domain>/mapping/`, package `<domain>mapping`): `<Domain>Response` struct + `ToResponse(sqlitedb.<Domain>)` in `mapping.go`. Called by adapter before `WriteJSON`.
+- **Core layer** (`internal/<domain>/core/`, package `<domain>core`): `ErrNotFound` + type aliases (`CreateXInput = model.CreateXRequest`) in `<domain>.go`. Consolidated `Service` struct + `NewService(q, tracer)` + all CRUD methods in `service.go`. All return `*pgdb.<Entity>` directly. OTEL tracing on every method. Service tests in `service_test.go` (package `<domain>core_test`).
+- **Mapping layer** (`internal/<domain>/mapping/`, package `<domain>mapping`): `<Domain>Response` struct + `ToResponse(pgdb.<Domain>)` in `mapping.go`. Called by adapter before `WriteJSON`.
 - **Adapter layer** (`internal/<domain>/adapter/`, package `<domain>adapter`): `HTTPAdapter{svc *<domain>core.Service, val app.Validator}` + exported handler methods (`ListXxxHandler`, `CreateXxxHandler`, etc.). Imports `core/`, `mapping/`, `model/`.
 - **Module** (`internal/<domain>/module.go`, package `<domain>`): `Module{httpAdapter *<domain>adapter.HTTPAdapter}` + `NewModule(a *app.App)` + `RegisterRoutes`. Constructor calls `core.NewService` then `adapter.NewHTTPAdapter`. Main imports only the domain root package.
-- **No repository adapter:** Service calls `s.q.<QueryName>(ctx, ...)` on `*sqlitedb.Queries` directly. No intermediate interface.
-- **App container:** `internal/app/app.App` holds `*sqlitedb.Queries`, `Validator`, and `trace.TracerProvider`. Created once in `main`. Every module receives it via `NewModule(a)`.
+- **No repository adapter:** Service calls `s.q.<QueryName>(ctx, ...)` on `*pgdb.Queries` directly. No intermediate interface.
+- **App container:** `internal/app/app.App` holds `*pgdb.Queries`, `Validator`, and `trace.TracerProvider`. Created once in `main`. Every module receives it via `NewModule(a)`.
 - **Tracer:** `a.Tracer.Tracer("<domain>")` called inside `NewModule`. Tests inject `noop.NewTracerProvider()`.
 - **Handler pipeline:** `json.NewDecoder(r.Body).Decode(&req)` → `m.val.Validate(&req)` → service call → `router.WriteJSON(w, status, v)`. Return 400 for decode errors, 422 for validation, 404 for not-found, 500 for unexpected.
 - **JSON helper:** `router.WriteJSON(w, status, v)` — `pkg/http` package name is `router` (no alias needed). `net/http` imported as `http`.
@@ -179,5 +187,6 @@ make obs/down
 These skills provide detailed patterns on demand — invoke when working in these areas:
 
 - **`handler-patterns`** — Handler pipeline, error responses, validation patterns (net/http)
-- **`sqlite-config`** — Connection setup, migrations, sqlc codegen, import paths
+- **`postgres-config`** — PostgreSQL connection setup, migrations, sqlc codegen, pgx/v5 patterns, env vars
+- **`sqlite-config`** — Legacy SQLite reference (kept for historical context)
 - **`observability`** — OTEL tracing, structured logging, metrics, Grafana stack

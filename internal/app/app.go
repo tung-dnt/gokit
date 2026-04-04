@@ -5,7 +5,7 @@ package app
 import (
 	"go.opentelemetry.io/otel/trace"
 
-	sqlitedb "restful-boilerplate/pkg/sqlite/db"
+	pgdb "restful-boilerplate/pkg/postgres/db"
 )
 
 // Validator validates struct fields. It is implemented by pkg/validator.CustomValidator.
@@ -18,7 +18,7 @@ type Validator interface {
 // It intentionally holds a TracerProvider rather than a named Tracer so each
 // module can create its own domain-specific tracer.
 type App struct {
-	Queries   *sqlitedb.Queries
+	Queries   *pgdb.Queries
 	Validator Validator
 	Tracer    trace.TracerProvider
 }

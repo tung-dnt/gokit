@@ -8,19 +8,18 @@ import (
 	"go.opentelemetry.io/otel/trace/noop"
 
 	usercore "restful-boilerplate/internal/user/core"
-	sqlitedb "restful-boilerplate/pkg/sqlite/db"
+	pgdb "restful-boilerplate/pkg/postgres/db"
 	"restful-boilerplate/pkg/testutil"
 )
 
 func newTestService(t *testing.T) *usercore.Service {
 	t.Helper()
-	db := testutil.SetupTestDB(t)
-	q := sqlitedb.New(db)
+	pool := testutil.SetupPgTestDB(t)
+	q := pgdb.New(pool)
 	return usercore.NewService(q, noop.NewTracerProvider().Tracer("test"))
 }
 
 func TestCreateUser(t *testing.T) {
-	t.Parallel()
 	svc := newTestService(t)
 	ctx := context.Background()
 
@@ -46,7 +45,6 @@ func TestCreateUser(t *testing.T) {
 }
 
 func TestCreateUser_DuplicateEmail(t *testing.T) {
-	t.Parallel()
 	svc := newTestService(t)
 	ctx := context.Background()
 
@@ -62,7 +60,6 @@ func TestCreateUser_DuplicateEmail(t *testing.T) {
 }
 
 func TestListUsers_Empty(t *testing.T) {
-	t.Parallel()
 	svc := newTestService(t)
 	ctx := context.Background()
 
@@ -79,7 +76,6 @@ func TestListUsers_Empty(t *testing.T) {
 }
 
 func TestListUsers_Multiple(t *testing.T) {
-	t.Parallel()
 	svc := newTestService(t)
 	ctx := context.Background()
 
@@ -96,7 +92,6 @@ func TestListUsers_Multiple(t *testing.T) {
 }
 
 func TestGetUserByID_Found(t *testing.T) {
-	t.Parallel()
 	svc := newTestService(t)
 	ctx := context.Background()
 
@@ -115,7 +110,6 @@ func TestGetUserByID_Found(t *testing.T) {
 }
 
 func TestGetUserByID_NotFound(t *testing.T) {
-	t.Parallel()
 	svc := newTestService(t)
 	ctx := context.Background()
 
@@ -126,7 +120,6 @@ func TestGetUserByID_NotFound(t *testing.T) {
 }
 
 func TestUpdateUser_BothFields(t *testing.T) {
-	t.Parallel()
 	svc := newTestService(t)
 	ctx := context.Background()
 
@@ -145,7 +138,6 @@ func TestUpdateUser_BothFields(t *testing.T) {
 }
 
 func TestUpdateUser_NameOnly(t *testing.T) {
-	t.Parallel()
 	svc := newTestService(t)
 	ctx := context.Background()
 
@@ -164,7 +156,6 @@ func TestUpdateUser_NameOnly(t *testing.T) {
 }
 
 func TestUpdateUser_EmailOnly(t *testing.T) {
-	t.Parallel()
 	svc := newTestService(t)
 	ctx := context.Background()
 
@@ -183,7 +174,6 @@ func TestUpdateUser_EmailOnly(t *testing.T) {
 }
 
 func TestUpdateUser_EmptyInput(t *testing.T) {
-	t.Parallel()
 	svc := newTestService(t)
 	ctx := context.Background()
 
@@ -202,7 +192,6 @@ func TestUpdateUser_EmptyInput(t *testing.T) {
 }
 
 func TestUpdateUser_NotFound(t *testing.T) {
-	t.Parallel()
 	svc := newTestService(t)
 	ctx := context.Background()
 
@@ -213,7 +202,6 @@ func TestUpdateUser_NotFound(t *testing.T) {
 }
 
 func TestDeleteUser_Success(t *testing.T) {
-	t.Parallel()
 	svc := newTestService(t)
 	ctx := context.Background()
 
@@ -230,7 +218,6 @@ func TestDeleteUser_Success(t *testing.T) {
 }
 
 func TestDeleteUser_NotFound(t *testing.T) {
-	t.Parallel()
 	svc := newTestService(t)
 	ctx := context.Background()
 

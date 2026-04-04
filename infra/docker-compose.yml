@@ -1,4 +1,20 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    ports: ["5432:5432"]
+    networks: [observability]
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   prometheus:
     image: prom/prometheus:v2.52.0
     volumes:
@@ -51,6 +67,7 @@ networks:
     driver: bridge
 
 volumes:
+  postgres-data:
   grafana-data:
   tempo-data:
   loki-data:

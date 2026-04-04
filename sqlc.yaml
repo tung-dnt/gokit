@@ -10,3 +10,14 @@ sql:
         overrides:
           - db_type: "DATETIME"
             go_type: "time.Time"
+  - engine: "postgresql"
+    queries: "pkg/postgres/queries"
+    schema: "pkg/postgres/migrations"
+    gen:
+      go:
+        package: "pgdb"
+        out: "pkg/postgres/db"
+        sql_package: "pgx/v5"
+        overrides:
+          - db_type: "timestamptz"
+            go_type: "time.Time"

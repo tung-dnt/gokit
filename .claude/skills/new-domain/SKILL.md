@@ -25,7 +25,7 @@ Shared ID utility: `restful-boilerplate/internal/shared` → `shared.GenerateID(
 
 - `model/` is `package <domain>model` — request DTOs + `ErrNotFound` sentinel
 - `core/` is `package <domain>core` — re-exports type aliases + `ErrNotFound` + consolidated `Service`
-- `mapping/` is `package <domain>mapping` — `<Domain>Response` + `ToResponse(sqlitedb.<Domain>)`
+- `mapping/` is `package <domain>mapping` — `<Domain>Response` + `ToResponse(pgdb.<Domain>)`
 - `adapter/` is `package <domain>adapter` — `HTTPAdapter` with exported handler methods
 - `module.go` is `package <domain>` — `Module{httpAdapter}` + `NewModule(a)` + `RegisterRoutes`
 - Handlers call `mapping.ToResponse(...)` before `router.WriteJSON`
@@ -38,36 +38,36 @@ Shared ID utility: `restful-boilerplate/internal/shared` → `shared.GenerateID(
 
 ## Step 1 — SQL migration + queries
 
-### `pkg/sqlite/migrations/<domain>.sql`
+### `pkg/postgres/migrations/<domain>.sql`
 
 ```sql
 CREATE TABLE IF NOT EXISTS <domain>s (
-    id         TEXT     PRIMARY KEY NOT NULL,
-    name       TEXT     NOT NULL,
-    created_at DATETIME NOT NULL
+    id         TEXT        PRIMARY KEY NOT NULL,
+    name       TEXT        NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL
 );
 ```
 
-### `pkg/sqlite/queries/<domain>.sql`
+### `pkg/postgres/queries/<domain>.sql`
 
 ```sql
 -- name: Create<Domain> :one
 INSERT INTO <domain>s (id, name, created_at)
-VALUES (?, ?, ?)
+VALUES ($1, $2, $3)
 RETURNING *;
 
 -- name: List<Domain>s :many
 SELECT * FROM <domain>s ORDER BY created_at ASC;
 
 -- name: Get<Domain>ByID :one
-SELECT * FROM <domain>s WHERE id = ? LIMIT 1;
+SELECT * FROM <domain>s WHERE id = $1 LIMIT 1;
 
 -- name: Update<Domain> :one
-UPDATE <domain>s SET name = ? WHERE id = ?
+UPDATE <domain>s SET name = $1 WHERE id = $2
 RETURNING *;
 
 -- name: Delete<Domain> :execresult
-DELETE FROM <domain>s WHERE id = ?;
+DELETE FROM <domain>s WHERE id = $1;
 ```
 
 Then run:
@@ -138,30 +138,30 @@ package <domain>core
 
 import (
     "context"
-    "database/sql"
     "errors"
     "fmt"
     "time"
 
+    "github.com/jackc/pgx/v5"
     "go.opentelemetry.io/otel/codes"
     "go.opentelemetry.io/otel/trace"
 
     "restful-boilerplate/internal/shared"
-    sqlitedb "restful-boilerplate/pkg/sqlite/db"
+    pgdb "restful-boilerplate/pkg/postgres/db"
 )
 
-// Service orchestrates <domain> use-cases on top of sqlitedb.Queries.
+// Service orchestrates <domain> use-cases on top of pgdb.Queries.
 type Service struct {
-    q      *sqlitedb.Queries
+    q      *pgdb.Queries
     tracer trace.Tracer
 }
 
 // NewService creates a Service backed by q and traced via tracer.
-func NewService(q *sqlitedb.Queries, tracer trace.Tracer) *Service {
+func NewService(q *pgdb.Queries, tracer trace.Tracer) *Service {
     return &Service{q: q, tracer: tracer}
 }
 
-func (s *Service) Create<Domain>(ctx context.Context, in Create<Domain>Input) (*sqlitedb.<Domain>, error) {
+func (s *Service) Create<Domain>(ctx context.Context, in Create<Domain>Input) (*pgdb.<Domain>, error) {
     ctx, span := s.tracer.Start(ctx, "<domain>.Create<Domain>")
     defer span.End()
 
@@ -172,7 +172,7 @@ func (s *Service) Create<Domain>(ctx context.Context, in Create<Domain>Input) (*
         return nil, fmt.Errorf("generate id: %w", err)
     }
 
-    row, err := s.q.Create<Domain>(ctx, sqlitedb.Create<Domain>Params{
+    row, err := s.q.Create<Domain>(ctx, pgdb.Create<Domain>Params{
         ID: id, Name: in.Name, CreatedAt: time.Now(),
     })
     if err != nil {
@@ -183,13 +183,13 @@ func (s *Service) Create<Domain>(ctx context.Context, in Create<Domain>Input) (*
     return &row, nil
 }
 
-func (s *Service) Get<Domain>ByID(ctx context.Context, id string) (*sqlitedb.<Domain>, error) {
+func (s *Service) Get<Domain>ByID(ctx context.Context, id string) (*pgdb.<Domain>, error) {
     ctx, span := s.tracer.Start(ctx, "<domain>.Get<Domain>ByID")
     defer span.End()
 
     row, err := s.q.Get<Domain>ByID(ctx, id)
     if err != nil {
-        if errors.Is(err, sql.ErrNoRows) {
+        if errors.Is(err, pgx.ErrNoRows) {
             return nil, ErrNotFound
         }
         span.RecordError(err)
@@ -199,7 +199,7 @@ func (s *Service) Get<Domain>ByID(ctx context.Context, id string) (*sqlitedb.<Do
     return &row, nil
 }
 
-func (s *Service) List<Domain>s(ctx context.Context) ([]*sqlitedb.<Domain>, error) {
+func (s *Service) List<Domain>s(ctx context.Context) ([]*pgdb.<Domain>, error) {
     ctx, span := s.tracer.Start(ctx, "<domain>.List<Domain>s")
     defer span.End()
 
@@ -209,14 +209,14 @@ func (s *Service) List<Domain>s(ctx context.Context) ([]*sqlitedb.<Domain>, erro
         span.SetStatus(codes.Error, err.Error())
         return nil, fmt.Errorf("list<Domain>s: %w", err)
     }
-    out := make([]*sqlitedb.<Domain>, 0, len(rows))
+    out := make([]*pgdb.<Domain>, 0, len(rows))
     for i := range rows {
         out = append(out, &rows[i])
     }
     return out, nil
 }
 
-func (s *Service) Update<Domain>(ctx context.Context, id string, in Update<Domain>Input) (*sqlitedb.<Domain>, error) {
+func (s *Service) Update<Domain>(ctx context.Context, id string, in Update<Domain>Input) (*pgdb.<Domain>, error) {
     ctx, span := s.tracer.Start(ctx, "<domain>.Update<Domain>")
     defer span.End()
 
@@ -227,11 +227,11 @@ func (s *Service) Update<Domain>(ctx context.Context, id string, in Update<Domai
     if in.Name != "" {
         existing.Name = in.Name
     }
-    row, err := s.q.Update<Domain>(ctx, sqlitedb.Update<Domain>Params{
+    row, err := s.q.Update<Domain>(ctx, pgdb.Update<Domain>Params{
         ID: id, Name: existing.Name,
     })
     if err != nil {
-        if errors.Is(err, sql.ErrNoRows) {
+        if errors.Is(err, pgx.ErrNoRows) {
             return nil, ErrNotFound
         }
         span.RecordError(err)
@@ -251,11 +251,7 @@ func (s *Service) Delete<Domain>(ctx context.Context, id string) error {
         span.SetStatus(codes.Error, err.Error())
         return fmt.Errorf("delete<Domain>: %w", err)
     }
-    n, err := result.RowsAffected()
-    if err != nil {
-        return fmt.Errorf("delete<Domain> rows affected: %w", err)
-    }
-    if n == 0 {
+    if result.RowsAffected() == 0 {
         return ErrNotFound
     }
     return nil
@@ -274,7 +270,7 @@ package <domain>mapping
 
 import (
     "time"
-    sqlitedb "restful-boilerplate/pkg/sqlite/db"
+    pgdb "restful-boilerplate/pkg/postgres/db"
 )
 
 // <Domain>Response is the HTTP JSON response shape for a <domain>.
@@ -284,8 +280,8 @@ type <Domain>Response struct {
     CreatedAt time.Time `json:"created_at"`
 }
 
-// ToResponse converts a sqlitedb.<Domain> DB model to a <Domain>Response.
-func ToResponse(d sqlitedb.<Domain>) <Domain>Response {
+// ToResponse converts a pgdb.<Domain> DB model to a <Domain>Response.
+func ToResponse(d pgdb.<Domain>) <Domain>Response {
     return <Domain>Response{ID: d.ID, Name: d.Name, CreatedAt: d.CreatedAt}
 }
 ```
@@ -447,7 +443,7 @@ func (m *Module) RegisterRoutes(g *router.Group) {
 
 ---
 
-## Step 7 — Wire into cmd/http/main.go
+## Step 7 — Wire into main.go
 
 ```go
 import (
@@ -463,7 +459,7 @@ g.Group("/<domain>s", <domain>.NewModule(a).RegisterRoutes)
 ## Step 8 — Regenerate Swagger docs
 
 ```bash
-go tool swag init -g cmd/http/main.go -o docs/
+go tool swag init -g main.go -o docs/
 make check
 ```
 
@@ -471,15 +467,15 @@ make check
 
 ## Checklist
 
-- [ ] `pkg/sqlite/migrations/<domain>.sql` — CREATE TABLE
-- [ ] `pkg/sqlite/queries/<domain>.sql` — CRUD queries with sqlc annotations
+- [ ] `pkg/postgres/migrations/<domain>.sql` — CREATE TABLE (TIMESTAMPTZ for timestamps)
+- [ ] `pkg/postgres/queries/<domain>.sql` — CRUD queries with `$1, $2, ...` params
 - [ ] `go tool sqlc generate` + `go build ./...`
 - [ ] `internal/<domain>/model/errors.go` — ErrNotFound sentinel
 - [ ] `internal/<domain>/model/dto.go` — Create/UpdateXRequest with validate + example tags
 - [ ] `internal/<domain>/core/<domain>.go` — ErrNotFound + type aliases from model
-- [ ] `internal/<domain>/core/service.go` — Service + NewService + all CRUD methods
-- [ ] `internal/<domain>/mapping/mapping.go` — <Domain>Response + ToResponse
+- [ ] `internal/<domain>/core/service.go` — Service + NewService + all CRUD methods (pgdb, pgx.ErrNoRows)
+- [ ] `internal/<domain>/mapping/mapping.go` — <Domain>Response + ToResponse (pgdb.<Domain>)
 - [ ] `internal/<domain>/adapter/http.go` — HTTPAdapter + exported handler methods
 - [ ] `internal/<domain>/module.go` — Module + NewModule(a *app.App) + RegisterRoutes
-- [ ] `cmd/http/main.go` — add group wiring (import domain root package)
+- [ ] `main.go` — add group wiring (import domain root package)
 - [ ] `make swagger` + `make check`

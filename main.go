@@ -11,7 +11,6 @@ import (
 
 	httpSwagger "github.com/swaggo/http-swagger/v2"
 	"go.opentelemetry.io/otel"
-	_ "modernc.org/sqlite"
 
 	_ "restful-boilerplate/docs"
 	"restful-boilerplate/internal/app"
@@ -21,16 +20,16 @@ import (
 	"restful-boilerplate/pkg/logger"
 	"restful-boilerplate/pkg/metrics"
 	"restful-boilerplate/pkg/otelhttp"
+	"restful-boilerplate/pkg/postgres"
+	pgdb "restful-boilerplate/pkg/postgres/db"
 	"restful-boilerplate/pkg/recovery"
-	"restful-boilerplate/pkg/sqlite"
-	sqlitedb "restful-boilerplate/pkg/sqlite/db"
 	"restful-boilerplate/pkg/telemetry"
 	cv "restful-boilerplate/pkg/validator"
 )
 
 // @title          Restful Boilerplate API
 // @version        1.0
-// @description    Go RESTful API boilerplate built on net/http + SQLite.
+// @description    Go RESTful API boilerplate built on net/http + PostgreSQL.
 // @host           localhost:4040
 // @BasePath       /api
 // @schemes        http
@@ -44,7 +43,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	db, err := sqlite.OpenDB(ctx, "./data.db")
+	pool, err := postgres.OpenDB(ctx, cfg.DatabaseURL)
 	if err != nil {
 		slog.Error("failed to open database", "error", err)
 		stopTracing()
@@ -52,10 +51,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = sqlite.Migrate(ctx, db); err != nil {
+	if err = postgres.Migrate(ctx, pool); err != nil {
 		slog.Error("failed to migrate database", "error", err)
 		stopTracing()
-		_ = db.Close() //nolint:errcheck // best-effort close on error path
+		pool.Close()
 		stop()
 		os.Exit(1)
 	}
@@ -63,13 +62,13 @@ func main() {
 	// All early-exit paths done; defers are safe from here.
 	defer stop()
 	defer stopTracing()
-	defer db.Close() //nolint:errcheck // best-effort close on exit
+	defer pool.Close()
 
 	v := cv.New()
 	metric := metrics.New()
 
 	a := &app.App{
-		Queries:   sqlitedb.New(db),
+		Queries:   pgdb.New(pool),
 		Validator: v,
 		Tracer:    otel.GetTracerProvider(),
 	}

@@ -7,8 +7,9 @@ import (
 
 // Config holds all application configuration.
 type Config struct {
-	Server    ServerConfig
-	LogFormat string
+	Server      ServerConfig
+	LogFormat   string
+	DatabaseURL string
 }
 
 // ServerConfig holds HTTP server configuration.
@@ -24,7 +25,8 @@ type ServerConfig struct {
 // getenv is injected so callers (and tests) can supply their own env source.
 func Load(getenv func(string) string) *Config {
 	return &Config{
-		LogFormat: getEnv(getenv, "LOG_FORMAT", "json"),
+		LogFormat:   getEnv(getenv, "LOG_FORMAT", "json"),
+		DatabaseURL: getEnv(getenv, "DATABASE_URL", "postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable"),
 		Server: ServerConfig{
 			Host:         getEnv(getenv, "SERVER_HOST", "0.0.0.0"),
 			Port:         getEnv(getenv, "SERVER_PORT", "4040"),

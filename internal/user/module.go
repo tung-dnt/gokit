@@ -18,6 +18,7 @@ type Module struct {
 func NewModule(a *app.App) *Module {
 	svc := usercore.NewService(a.Queries, a.Tracer.Tracer("user"))
 	userHTTPAdapter := useradapter.NewHTTPAdapter(svc, a.Validator)
+
 	return &Module{httpAdapter: userHTTPAdapter}
 }
 

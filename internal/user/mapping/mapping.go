@@ -5,7 +5,7 @@ package usermapping
 import (
 	"time"
 
-	sqlitedb "restful-boilerplate/pkg/sqlite/db"
+	pgdb "restful-boilerplate/pkg/postgres/db"
 )
 
 // UserResponse is the HTTP JSON response shape for a user.
@@ -16,8 +16,8 @@ type UserResponse struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-// ToResponse converts a sqlitedb.User DB model to a UserResponse.
-func ToResponse(u sqlitedb.User) UserResponse {
+// ToResponse converts a pgdb.User DB model to a UserResponse.
+func ToResponse(u pgdb.User) UserResponse {
 	return UserResponse{
 		ID:        u.ID,
 		Name:      u.Name,
