@@ -1,5 +1,5 @@
-// Package shared provides utilities shared across all domain packages.
-package shared //nolint:revive // shared is an intentional package name for cross-domain utilities
+// Package util provides utilities shared across all domain packages.
+package util //nolint:revive // shared is an intentional package name for cross-domain utilities
 
 import (
 	"crypto/rand"

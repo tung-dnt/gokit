@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-A Go RESTful API boilerplate built on **net/http (stdlib) + PostgreSQL + sqlc** with full observability (OpenTelemetry, Tempo, Loki, Grafana). Uses a 3-folder structure: `internal/` for business modules, `pkg/` for pure utilities, `infra/` for Docker/observability configs only. Each domain is split into four sub-packages: `adapter/`, `core/`, `mapping/`, `model/`.
+A Go RESTful API boilerplate built on **net/http (stdlib) + PostgreSQL + sqlc** with full observability (OpenTelemetry, Tempo, Loki, Grafana). Uses a 3-folder structure: `internal/` for business modules, `pkg/` for pure utilities, `infra/` for Docker/observability configs only. Each domain is a **flat single package** — all layers (adapter, service, mapping, DTOs, errors) live in `internal/<domain>/` with file-name prefixes instead of sub-packages.
 
 **Module:** `restful-boilerplate` | **Go:** 1.26.0 | **Deps:** jackc/pgx/v5, go-playground/validator, swaggo/swag
 
@@ -18,30 +18,22 @@ A Go RESTful API boilerplate built on **net/http (stdlib) + PostgreSQL + sqlc** 
 internal/
   app/                     → Shared DI container (package app)
     app.go                 → App struct + Validator interface
-  <domain>/                → Domain root — package <domain>
-    module.go              → Module{httpAdapter *<domain>adapter.HTTPAdapter} + NewModule(a *app.App) + RegisterRoutes
-    module.test.go         → Internal test package (package <domain>)
-    adapter/               → HTTP adapter layer — package <domain>adapter
-      http.go              → HTTPAdapter{svc *core.Service, val app.Validator} + exported handler methods
-    core/                  → Business logic layer — package <domain>core
-      <domain>.go          → ErrNotFound sentinel + type aliases (CreateXInput = model.CreateXRequest)
-      service.go           → Service struct + NewService(q, tracer) + all CRUD methods (consolidated)
-      service_test.go      → External test package (package <domain>core_test)
-    mapping/               → Response conversion layer — package <domain>mapping
-      mapping.go           → <Domain>Response struct + ToResponse(pgdb.<Domain>)
-    model/                 → Request/response types — package <domain>model
-      dto.go               → Create/UpdateXRequest with validate + json + example tags
-      dto_test.go          → Validator tag tests (internal package <domain>model)
-      errors.go            → ErrNotFound sentinel
-  shared/                  → Cross-domain utilities — package shared
-    generate-id.go         → GenerateID() — crypto/rand 8-byte hex
+  <domain>/                → Flat domain package — package <domain>
+    module.<domain>.go     → Module{httpAdapter *httpAdapter} + NewModule(a *app.App) + RegisterRoutes
+    adapter.http.go        → httpAdapter{svc *<domain>Service, val app.Validator} + handler methods (unexported)
+    service.<domain>.go    → <domain>Service struct + new<Domain>Service(q, tracer) + all CRUD methods
+    domain.dto.go          → Create/UpdateXRequest with validate + json + example tags
+    domain.error.go        → ErrNotFound sentinel
+    mapping.response.go    → <Domain>Response struct + ToResponse(pgdb.<Domain>)
 
 pkg/                       → Pure utilities — NO business knowledge
   http/                    → Router wrapper for net/http ServeMux
     router.go              → Router struct + NewRouter + Prefix + Use + Group + Route
     group.go               → Group struct + Use (group middleware) + GET/POST/PUT/PATCH/DELETE/ANY + nested Group
-    util.go                → WriteJSON helper
+    util.go                → WriteJSON + Bind helpers
     server.go              → GracefulServe (graceful shutdown)
+  util/                    → Shared utilities — package util
+    generate-id.go         → GenerateID() — crypto/rand 8-byte hex
   sqlite/                  → SQLite connection + migration infra
     connection.go          → OpenDB() — single conn + WAL + busy_timeout
     migrate.go             → Migrate() with //go:embed
@@ -88,13 +80,13 @@ Makefile                   → All dev tasks
 Simple layered structure with clear dependency rules:
 
 ```
-internal/<domain>/  → internal/app (App container) + pkg/postgres/db + pkg/logger
+internal/<domain>/  → internal/app (App container) + pkg/postgres/db + pkg/logger + pkg/util
 internal/app/       → pkg/postgres/db (Queries) + pkg/validator (Validator interface)
 pkg/                → stdlib + external libs only (no business knowledge)
 infra/              → Docker/observability configs only (no Go code)
 ```
 
-No repository interface — the service uses `*pgdb.Queries` directly. Each domain has four sub-packages: `adapter/` (HTTP), `core/` (business logic), `mapping/` (response conversion), `model/` (DTOs). Dependency rule: `adapter/` imports `core/`, `mapping/`, `model/`; `core/` imports `model/`; `model/` imports nothing from the domain. No circular deps.
+No repository interface — the service uses `*pgdb.Queries` directly. Each domain is a **flat single package** — all concerns live in one `internal/<domain>/` directory using file-name prefixes (`adapter.http.go`, `service.<domain>.go`, `domain.dto.go`, `domain.error.go`, `mapping.response.go`). No sub-packages, no cross-package imports within a domain.
 
 **Wiring in main.go:**
 ```go
@@ -117,25 +109,28 @@ r.Group("/v1", func(g *router.Group) {
 
 **Environment:** `DATABASE_URL` — defaults to `postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable`
 
-To add a new domain: run `/new-domain` — it creates `internal/<domain>/` with all sub-packages and adds `g.Group("/<domain>s", <domain>.NewModule(a).RegisterRoutes)` to the v1 group in `main.go`.
+To add a new domain: run `/new-domain` — it creates `internal/<domain>/` as a flat package with all domain files and adds `g.Group("/<domain>s", <domain>.NewModule(a).RegisterRoutes)` to the v1 group in `main.go`.
 
 ---
 
 ## Key Patterns
 
-- **Model layer** (`internal/<domain>/model/`, package `<domain>model`): Request DTOs (`Create<Domain>Request`, `Update<Domain>Request`) with `validate` + `json` + `example` tags in `dto.go`. `ErrNotFound` sentinel in `errors.go`. Validator tag tests in `dto_test.go` (package `<domain>model`).
-- **Core layer** (`internal/<domain>/core/`, package `<domain>core`): `ErrNotFound` + type aliases (`CreateXInput = model.CreateXRequest`) in `<domain>.go`. Consolidated `Service` struct + `NewService(q, tracer)` + all CRUD methods in `service.go`. All return `*pgdb.<Entity>` directly. OTEL tracing on every method. Service tests in `service_test.go` (package `<domain>core_test`).
-- **Mapping layer** (`internal/<domain>/mapping/`, package `<domain>mapping`): `<Domain>Response` struct + `ToResponse(pgdb.<Domain>)` in `mapping.go`. Called by adapter before `WriteJSON`.
-- **Adapter layer** (`internal/<domain>/adapter/`, package `<domain>adapter`): `HTTPAdapter{svc *<domain>core.Service, val app.Validator}` + exported handler methods (`ListXxxHandler`, `CreateXxxHandler`, etc.). Imports `core/`, `mapping/`, `model/`.
-- **Module** (`internal/<domain>/module.go`, package `<domain>`): `Module{httpAdapter *<domain>adapter.HTTPAdapter}` + `NewModule(a *app.App)` + `RegisterRoutes`. Constructor calls `core.NewService` then `adapter.NewHTTPAdapter`. Main imports only the domain root package.
+- **Flat domain package** (`internal/<domain>/`, package `<domain>`): All layers in one package, separated by file-name prefix. No sub-packages, no cross-domain imports within a domain.
+- **File naming convention:** `adapter.http.go`, `service.<domain>.go`, `domain.dto.go`, `domain.error.go`, `mapping.response.go`, `module.<domain>.go`.
+- **DTOs** (`domain.dto.go`): `Create<Domain>Request`, `Update<Domain>Request` with `validate` + `json` + `example` tags. Used directly — no type aliases.
+- **Error sentinel** (`domain.error.go`): Single `ErrNotFound` declaration in the domain package. No duplication.
+- **Service** (`service.<domain>.go`): Unexported `<domain>Service` struct + unexported constructor `new<Domain>Service(q, tracer)` + all CRUD methods (unexported, e.g. `createUser`, `listUsers`). All return `*pgdb.<Entity>` directly. OTEL tracing on every method.
+- **Mapping** (`mapping.response.go`): `<Domain>Response` struct + `ToResponse(pgdb.<Domain>)`. Called by adapter before `WriteJSON`.
+- **Adapter** (`adapter.http.go`): Unexported `httpAdapter{svc *<domain>Service, val app.Validator}` + unexported constructor `newHTTPAdapter`. Handler methods may be exported (needed for route registration) or unexported.
+- **Module** (`module.<domain>.go`, package `<domain>`): `Module{httpAdapter *httpAdapter}` + `NewModule(a *app.App)` + `RegisterRoutes`. Constructor calls `new<Domain>Service` then `newHTTPAdapter`. Main imports only the domain root package.
 - **No repository adapter:** Service calls `s.q.<QueryName>(ctx, ...)` on `*pgdb.Queries` directly. No intermediate interface.
 - **App container:** `internal/app/app.App` holds `*pgdb.Queries`, `Validator`, and `trace.TracerProvider`. Created once in `main`. Every module receives it via `NewModule(a)`.
 - **Tracer:** `a.Tracer.Tracer("<domain>")` called inside `NewModule`. Tests inject `noop.NewTracerProvider()`.
-- **Handler pipeline:** `json.NewDecoder(r.Body).Decode(&req)` → `m.val.Validate(&req)` → service call → `router.WriteJSON(w, status, v)`. Return 400 for decode errors, 422 for validation, 404 for not-found, 500 for unexpected.
-- **JSON helper:** `router.WriteJSON(w, status, v)` — `pkg/http` package name is `router` (no alias needed). `net/http` imported as `http`.
+- **Handler pipeline:** `router.Bind(m.val, w, r, &req)` → service call → `ToResponse(...)` → `router.WriteJSON(w, status, v)`. `router.Bind` returns false and writes the error response on decode (400) or validation (422) failure — just `return` after it.
+- **JSON helpers:** `router.WriteJSON(w, status, v)` + `router.Bind(val, w, r, &v)` — `pkg/http` package name is `router`. `net/http` imported as `http`.
 - **Validation:** go-playground/validator tags on DTOs (`validate:"required,min=1,max=100"`). NOT manual `Valid()` method.
 - **Service errors:** Wrap with `fmt.Errorf("opName: %w", err)`. Use `errors.Is()` — never `==`.
-- **ID generation:** `shared.GenerateID()` from `internal/shared` — `crypto/rand` 8-byte hex.
+- **ID generation:** `shared.GenerateID()` — import as `shared "restful-boilerplate/pkg/util"` — `crypto/rand` 8-byte hex.
 - **Context:** All service/db methods accept `ctx context.Context` as first parameter.
 - **Structured logging:** `pkg/logger` — slog with JSON output. `logger.FromContext(ctx)` for trace-correlated logger.
 - **OTEL tracing:** Store tracer as struct field (not global). Use `pkg/otelhttp` middleware for net/http.

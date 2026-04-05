@@ -1,52 +1,35 @@
-// Package useradapter for user controller
-package useradapter
+// Package user for user controller
+package user
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 
 	"restful-boilerplate/internal/app"
-	usercore "restful-boilerplate/internal/user/core"
-	"restful-boilerplate/internal/user/mapping"
-	usermodel "restful-boilerplate/internal/user/model"
 	router "restful-boilerplate/pkg/http"
 )
 
-// HTTPAdapter handles HTTP requests for the user domain.
-type HTTPAdapter struct {
-	svc *usercore.Service
+// httpAdapter handles HTTP requests for the user domain.
+type httpAdapter struct {
+	svc *userService
 	val app.Validator
 }
 
-// NewHTTPAdapter creates a new HTTPAdapter with the given service and validator.
-func NewHTTPAdapter(svc *usercore.Service, val app.Validator) *HTTPAdapter {
-	return &HTTPAdapter{svc: svc, val: val}
-}
-
-// bind decodes r.Body into v and validates it. Returns false and writes the error response if either fails.
-func (m *HTTPAdapter) bind(w http.ResponseWriter, r *http.Request, v any) bool {
-	if err := json.NewDecoder(r.Body).Decode(v); err != nil {
-		router.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
-		return false
-	}
-	if err := m.val.Validate(v); err != nil {
-		router.WriteJSON(w, http.StatusUnprocessableEntity, err)
-		return false
-	}
-	return true
+// newHTTPAdapter creates a new HTTPAdapter with the given service and validator.
+func newHTTPAdapter(svc *userService, val app.Validator) *httpAdapter {
+	return &httpAdapter{svc: svc, val: val}
 }
 
 // writeErr writes a 404 for ErrNotFound, otherwise 500.
-func (m *HTTPAdapter) writeErr(w http.ResponseWriter, err error) {
-	if errors.Is(err, usercore.ErrNotFound) {
+func (m *httpAdapter) writeErr(w http.ResponseWriter, err error) {
+	if errors.Is(err, ErrNotFound) {
 		router.WriteJSON(w, http.StatusNotFound, map[string]string{"error": "user not found"})
 		return
 	}
 	router.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 }
 
-// ListUsersHandler returns all users.
+// listUsersHandler returns all users.
 //
 //	@Summary      List users
 //	@Tags         users
@@ -54,20 +37,20 @@ func (m *HTTPAdapter) writeErr(w http.ResponseWriter, err error) {
 //	@Success      200  {array}   usermapping.UserResponse
 //	@Failure      500  {object}  map[string]string
 //	@Router       /users [get]
-func (m *HTTPAdapter) ListUsersHandler(w http.ResponseWriter, r *http.Request) {
-	users, err := m.svc.ListUsers(r.Context())
+func (m *httpAdapter) listUsersHandler(w http.ResponseWriter, r *http.Request) {
+	users, err := m.svc.listUsers(r.Context())
 	if err != nil {
 		m.writeErr(w, err)
 		return
 	}
-	resp := make([]usermapping.UserResponse, 0, len(users))
+	resp := make([]userResponse, 0, len(users))
 	for _, u := range users {
-		resp = append(resp, usermapping.ToResponse(*u))
+		resp = append(resp, ToResponse(*u))
 	}
 	router.WriteJSON(w, http.StatusOK, resp)
 }
 
-// CreateUserHandler creates a new user.
+// createUserHandler creates a new user.
 //
 //	@Summary      Create user
 //	@Tags         users
@@ -79,20 +62,20 @@ func (m *HTTPAdapter) ListUsersHandler(w http.ResponseWriter, r *http.Request) {
 //	@Failure      422   {object}  map[string]string
 //	@Failure      500   {object}  map[string]string
 //	@Router       /users [post]
-func (m *HTTPAdapter) CreateUserHandler(w http.ResponseWriter, r *http.Request) {
-	var req usermodel.CreateUserRequest
-	if !m.bind(w, r, &req) {
+func (m *httpAdapter) createUserHandler(w http.ResponseWriter, r *http.Request) {
+	var req CreateUserRequest
+	if !router.Bind(m.val, w, r, &req) {
 		return
 	}
-	u, err := m.svc.CreateUser(r.Context(), req)
+	u, err := m.svc.createUser(r.Context(), req)
 	if err != nil {
 		m.writeErr(w, err)
 		return
 	}
-	router.WriteJSON(w, http.StatusCreated, usermapping.ToResponse(*u))
+	router.WriteJSON(w, http.StatusCreated, ToResponse(*u))
 }
 
-// GetUserByIDHandler gets a user by ID.
+// getUserByIDHandler gets a user by ID.
 //
 //	@Summary      Get user by ID
 //	@Tags         users
@@ -102,16 +85,16 @@ func (m *HTTPAdapter) CreateUserHandler(w http.ResponseWriter, r *http.Request) 
 //	@Failure      404  {object}  map[string]string
 //	@Failure      500  {object}  map[string]string
 //	@Router       /users/{id} [get]
-func (m *HTTPAdapter) GetUserByIDHandler(w http.ResponseWriter, r *http.Request) {
-	u, err := m.svc.GetUserByID(r.Context(), r.PathValue("id"))
+func (m *httpAdapter) getUserByIDHandler(w http.ResponseWriter, r *http.Request) {
+	u, err := m.svc.getUserByID(r.Context(), r.PathValue("id"))
 	if err != nil {
 		m.writeErr(w, err)
 		return
 	}
-	router.WriteJSON(w, http.StatusOK, usermapping.ToResponse(*u))
+	router.WriteJSON(w, http.StatusOK, ToResponse(*u))
 }
 
-// UpdateUserHandler updates a user.
+// updateUserHandler updates a user.
 //
 //	@Summary      Update user
 //	@Tags         users
@@ -124,20 +107,20 @@ func (m *HTTPAdapter) GetUserByIDHandler(w http.ResponseWriter, r *http.Request)
 //	@Failure      404   {object}  map[string]string
 //	@Failure      500   {object}  map[string]string
 //	@Router       /users/{id} [put]
-func (m *HTTPAdapter) UpdateUserHandler(w http.ResponseWriter, r *http.Request) {
-	var req usermodel.UpdateUserRequest
-	if !m.bind(w, r, &req) {
+func (m *httpAdapter) updateUserHandler(w http.ResponseWriter, r *http.Request) {
+	var req UpdateUserRequest
+	if !router.Bind(m.val, w, r, &req) {
 		return
 	}
-	u, err := m.svc.UpdateUser(r.Context(), r.PathValue("id"), req)
+	u, err := m.svc.updateUser(r.Context(), r.PathValue("id"), req)
 	if err != nil {
 		m.writeErr(w, err)
 		return
 	}
-	router.WriteJSON(w, http.StatusOK, usermapping.ToResponse(*u))
+	router.WriteJSON(w, http.StatusOK, ToResponse(*u))
 }
 
-// DeleteUserHandler deletes a user.
+// deleteUserHandler deletes a user.
 //
 //	@Summary      Delete user
 //	@Tags         users
@@ -147,8 +130,8 @@ func (m *HTTPAdapter) UpdateUserHandler(w http.ResponseWriter, r *http.Request) 
 //	@Failure      404  {object}  map[string]string
 //	@Failure      500  {object}  map[string]string
 //	@Router       /users/{id} [delete]
-func (m *HTTPAdapter) DeleteUserHandler(w http.ResponseWriter, r *http.Request) {
-	if err := m.svc.DeleteUser(r.Context(), r.PathValue("id")); err != nil {
+func (m *httpAdapter) deleteUserHandler(w http.ResponseWriter, r *http.Request) {
+	if err := m.svc.deleteUser(r.Context(), r.PathValue("id")); err != nil {
 		m.writeErr(w, err)
 		return
 	}

@@ -1,4 +1,4 @@
-package usermodel
+package user
 
 // CreateUserRequest holds the input fields for creating a new user.
 type CreateUserRequest struct {

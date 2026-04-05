@@ -4,55 +4,62 @@ description: net/http handler pipeline, error responses, and validation patterns
 user_invocable: false
 ---
 
-Reference for net/http handler patterns used across all `internal/<domain>/adapter/` packages.
+Reference for net/http handler patterns used across all `internal/<domain>/` packages.
 
 ## Handler Signature
 
 ```go
-func (m *HTTPAdapter) XxxHandler(w http.ResponseWriter, r *http.Request)
+func (m *httpAdapter) xxxHandler(w http.ResponseWriter, r *http.Request)
 ```
 
-All handlers are **exported** methods on `*HTTPAdapter` (in `internal/<domain>/adapter/http.go`).
+All handlers are **unexported** methods on `*httpAdapter` (in `internal/<domain>/adapter.http.go`), unless they need to be exported for route registration from the module.
 
 ## Handler Pipeline
 
 Every handler follows this exact flow:
 
 ```
-json.NewDecoder(r.Body).Decode(&req) → m.val.Validate(&req) → service call → mapping.ToResponse → router.WriteJSON(w, status, response)
+router.Bind(m.val, w, r, &req) → service call → ToResponse(...) → router.WriteJSON(w, status, response)
 ```
+
+`router.Bind` combines decode + validate. It returns `false` and writes the error response automatically — just `return` after it.
 
 ## Error Response Patterns
 
 | Step | HTTP Status | Response |
 |------|-------------|----------|
-| `json.Decode` fails | **400** | `{"error": "invalid request body"}` |
-| `m.val.Validate` fails | **422** | validation error object |
+| `router.Bind` decode fails | **400** | `{"error": "invalid request body"}` |
+| `router.Bind` validate fails | **422** | validation error object |
 | `ErrNotFound` from service | **404** | `{"error": "<domain> not found"}` |
 | Unexpected error | **500** | `{"error": err.Error()}` |
+
+Use a shared `writeErr` helper on the adapter:
+
+```go
+func (m *httpAdapter) writeErr(w http.ResponseWriter, err error) {
+    if errors.Is(err, ErrNotFound) {
+        router.WriteJSON(w, http.StatusNotFound, map[string]string{"error": "<domain> not found"})
+        return
+    }
+    router.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+}
+```
 
 ### Code Examples
 
 ```go
-// Imports in adapter/http.go:
-// "net/http"                                    → http.ResponseWriter, http.StatusXxx
-// "restful-boilerplate/pkg/http"                → router.WriteJSON (pkg is named "router")
+// Imports in adapter.http.go:
+// "net/http"                          → http.ResponseWriter, http.StatusXxx
+// router "restful-boilerplate/pkg/http" → router.WriteJSON, router.Bind
 
-// Decode error → 400
-var req <domain>model.CreateXxxRequest
-if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-    router.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+// Bind (decode + validate) → 400 on decode fail, 422 on validation fail
+var req CreateXxxRequest
+if !router.Bind(m.val, w, r, &req) {
     return
 }
 
-// Validate error → 422
-if err := m.val.Validate(&req); err != nil {
-    router.WriteJSON(w, http.StatusUnprocessableEntity, err)
-    return
-}
-
-// Not found → 404 (ErrNotFound lives in <domain>core)
-if errors.Is(err, <domain>core.ErrNotFound) {
+// ErrNotFound → 404 (ErrNotFound is in same package, no prefix)
+if errors.Is(err, ErrNotFound) {
     router.WriteJSON(w, http.StatusNotFound, map[string]string{"error": "xxx not found"})
     return
 }
@@ -61,7 +68,7 @@ if errors.Is(err, <domain>core.ErrNotFound) {
 router.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 
 // Success with mapping → 200/201
-router.WriteJSON(w, http.StatusOK, <domain>mapping.ToResponse(*entity))
+router.WriteJSON(w, http.StatusOK, ToResponse(*entity))
 
 // No-content response → 204
 w.WriteHeader(http.StatusNoContent)
@@ -69,16 +76,15 @@ w.WriteHeader(http.StatusNoContent)
 
 ## Route Registration
 
-Routes registered in `internal/<domain>/module.go` via the HTTPAdapter:
+Routes registered in `internal/<domain>/module.<domain>.go`:
 
 ```go
-// in internal/<domain>/module.go
 func (m *Module) RegisterRoutes(g *router.Group) {
-    g.GET("/", m.httpAdapter.ListXxxHandler)
-    g.POST("/", m.httpAdapter.CreateXxxHandler)
-    g.GET("/{id}", m.httpAdapter.GetXxxByIDHandler)
-    g.PUT("/{id}", m.httpAdapter.UpdateXxxHandler)
-    g.DELETE("/{id}", m.httpAdapter.DeleteXxxHandler)
+    g.GET("/", m.httpAdapter.listXxxHandler)
+    g.POST("/", m.httpAdapter.createXxxHandler)
+    g.GET("/{id}", m.httpAdapter.getXxxByIDHandler)
+    g.PUT("/{id}", m.httpAdapter.updateXxxHandler)
+    g.DELETE("/{id}", m.httpAdapter.deleteXxxHandler)
 }
 ```
 
@@ -92,7 +98,7 @@ Groups support scoped middleware via `Use()`. Middleware added to a group wraps 
 ```go
 func (m *Module) RegisterRoutes(g *router.Group) {
     g.Use(someAuthMiddleware)  // only applies to routes in this group
-    g.GET("/", m.listXxxHandler)
+    g.GET("/", m.httpAdapter.listXxxHandler)
 }
 ```
 
@@ -102,11 +108,11 @@ func (m *Module) RegisterRoutes(g *router.Group) {
 
 ```go
 func (m *Module) RegisterRoutes(g *router.Group) {
-    g.GET("/", m.listXxxHandler)       // /xxx — no extra middleware
+    g.GET("/", m.httpAdapter.listXxxHandler)
 
     g.Group("/admin", func(sub *router.Group) {
-        sub.Use(adminOnlyMiddleware)               // inherits parent mw + adds its own
-        sub.DELETE("/{id}", m.deleteXxxHandler)     // /xxx/admin/{id}
+        sub.Use(adminOnlyMiddleware)
+        sub.DELETE("/{id}", m.httpAdapter.deleteXxxHandler)
     })
 }
 ```
@@ -117,28 +123,25 @@ func (m *Module) RegisterRoutes(g *router.Group) {
 id := r.PathValue("id")
 ```
 
-## JSON Response Helper
+## JSON Helpers
 
 ```go
-import rt "restful-boilerplate/pkg/http"
-
-rt.WriteJSON(w, http.StatusOK, data)
-rt.WriteJSON(w, http.StatusCreated, created)
+router.WriteJSON(w, http.StatusOK, data)
+router.Bind(m.val, w, r, &req)  // returns false + writes error on failure
 ```
 
 ## Validation
 
 - Use **go-playground/validator** tags on DTOs: `validate:"required,min=1,max=100"`
 - **NOT** manual `Valid()` method
-- `m.val.Validate(&req)` triggers validation via `pkg/validator/validator.go`
-- DTOs live in `internal/<domain>/model/dto.go` (`package <domain>model`) with `validate`, `json`, and `example` tags
-- Handlers decode into `<domain>model.Create<Domain>Request` directly (no separate adapter DTO)
+- DTOs live in `internal/<domain>/domain.dto.go` (same package) with `validate`, `json`, and `example` tags
+- `router.Bind` calls `val.Validate` internally — no manual two-step in handlers
 
 ## Middleware
 
 Standard `func(http.Handler) http.Handler` signature.
 
-**Global** (all routes): via `Router.Use()` — middleware is stored and applied per-handler via `wrap()`:
+**Global** (all routes): via `Router.Use()`:
 ```go
 r.Use(metric.Middleware)
 r.Use(otelhttp.Middleware("restful-boilerplate"))

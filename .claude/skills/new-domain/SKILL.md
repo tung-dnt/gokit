@@ -1,38 +1,38 @@
 ---
 name: new-domain
-description: Scaffold a new domain following the sub-package structure (model/, core/, mapping/, adapter/)
+description: Scaffold a new domain as a flat single package (no sub-packages)
 ---
 
 Scaffold a new domain under `internal/<domain>/`. Use `user` as the reference implementation.
 
 ## Architecture
 
-Each domain has **four sub-packages** plus a root module file:
+Each domain is a **flat single package** — all concerns in `internal/<domain>/` separated by file-name prefix:
 
-| Location | Go package | Purpose |
-|---|---|---|
-| `internal/<domain>/module.go` | `<domain>` | DI wiring + RegisterRoutes |
-| `internal/<domain>/adapter/http.go` | `<domain>adapter` | HTTP handlers (HTTPAdapter) |
-| `internal/<domain>/core/` | `<domain>core` | Business logic — Service, ErrNotFound, type aliases |
-| `internal/<domain>/mapping/mapping.go` | `<domain>mapping` | DB model → HTTP response conversion |
-| `internal/<domain>/model/` | `<domain>model` | Request DTOs + ErrNotFound sentinel |
+| File | Purpose |
+|---|---|
+| `module.<domain>.go` | DI wiring + RegisterRoutes |
+| `adapter.http.go` | HTTP handlers (unexported httpAdapter) |
+| `service.<domain>.go` | Business logic (unexported <domain>Service) |
+| `domain.dto.go` | Request DTOs with validate + json + example tags |
+| `domain.error.go` | ErrNotFound sentinel |
+| `mapping.response.go` | DB model → HTTP response conversion |
 
-Dependency rule: `adapter/` imports `core/`, `mapping/`, `model/`. `core/` imports `model/`. `model/` and `mapping/` import nothing from the domain. **No circular deps.**
+All types in the same `package <domain>`. No sub-package imports within a domain.
 
-Shared ID utility: `restful-boilerplate/internal/shared` → `shared.GenerateID() (string, error)`
+**Shared ID utility:** `shared "restful-boilerplate/pkg/util"` → `shared.GenerateID() (string, error)`
 
 ## Rules
 
-- `model/` is `package <domain>model` — request DTOs + `ErrNotFound` sentinel
-- `core/` is `package <domain>core` — re-exports type aliases + `ErrNotFound` + consolidated `Service`
-- `mapping/` is `package <domain>mapping` — `<Domain>Response` + `ToResponse(pgdb.<Domain>)`
-- `adapter/` is `package <domain>adapter` — `HTTPAdapter` with exported handler methods
-- `module.go` is `package <domain>` — `Module{httpAdapter}` + `NewModule(a)` + `RegisterRoutes`
-- Handlers call `mapping.ToResponse(...)` before `router.WriteJSON`
-- `ErrNotFound` defined in `model/errors.go`; re-declared in `core/<domain>.go`; handlers check via `errors.Is(err, <domain>core.ErrNotFound)`
+- Single `ErrNotFound` in `domain.error.go` — no duplication
+- No type aliases — use `Create<Domain>Request` directly in service method signatures
+- `httpAdapter`, `<domain>Service`, constructors, and CRUD methods are **unexported**
+- `Module`, `NewModule`, `RegisterRoutes` are exported (consumed by `main.go`)
+- `ErrNotFound` is in the same package — handlers check via `errors.Is(err, ErrNotFound)`
+- Handler decode+validate: `router.Bind(m.val, w, r, &req)` — returns false + writes error; just `return` after
 - All service/db methods accept `ctx context.Context` as first parameter
 - Wrap errors: `fmt.Errorf("opName: %w", err)`
-- IDs: `shared.GenerateID()` from `restful-boilerplate/internal/shared`
+- OTEL tracing on every service method via `telemetry.SpanErr`
 
 ---
 
@@ -78,12 +78,10 @@ go build ./...
 
 ---
 
-## Step 2 — model/ layer
-
-### `internal/<domain>/model/errors.go`
+## Step 2 — domain.error.go
 
 ```go
-package <domain>model
+package <domain>
 
 import "errors"
 
@@ -91,363 +89,345 @@ import "errors"
 var ErrNotFound = errors.New("<domain>: not found")
 ```
 
-### `internal/<domain>/model/dto.go`
+---
+
+## Step 3 — domain.dto.go
 
 ```go
-package <domain>model
+package <domain>
 
 // Create<Domain>Request is the validated input for creating a new <domain>.
 type Create<Domain>Request struct {
-    Name string `json:"name" validate:"required,min=1,max=100" example:"Alice"`
+	Name string `json:"name" validate:"required,min=1,max=100" example:"Alice"`
 }
 
 // Update<Domain>Request is the validated input for updating an existing <domain>.
 type Update<Domain>Request struct {
-    Name string `json:"name" validate:"omitempty,min=1,max=100" example:"Alice"`
+	Name string `json:"name" validate:"omitempty,min=1,max=100" example:"Alice"`
 }
 ```
 
 ---
 
-## Step 3 — core/ layer
-
-### `internal/<domain>/core/<domain>.go`
+## Step 4 — mapping.response.go
 
 ```go
-package <domain>core
+package <domain>
 
 import (
-    "errors"
-    <domain>model "restful-boilerplate/internal/<domain>/model"
-)
+	"time"
 
-// ErrNotFound is returned when a requested <domain> does not exist.
-var ErrNotFound = errors.New("<domain>: not found")
-
-// Create<Domain>Input is the input for creating a <domain>.
-type Create<Domain>Input = <domain>model.Create<Domain>Request
-
-// Update<Domain>Input is the input for updating a <domain>.
-type Update<Domain>Input = <domain>model.Update<Domain>Request
-```
-
-### `internal/<domain>/core/service.go`
-
-```go
-package <domain>core
-
-import (
-    "context"
-    "errors"
-    "fmt"
-    "time"
-
-    "github.com/jackc/pgx/v5"
-    "go.opentelemetry.io/otel/codes"
-    "go.opentelemetry.io/otel/trace"
-
-    "restful-boilerplate/internal/shared"
-    pgdb "restful-boilerplate/pkg/postgres/db"
-)
-
-// Service orchestrates <domain> use-cases on top of pgdb.Queries.
-type Service struct {
-    q      *pgdb.Queries
-    tracer trace.Tracer
-}
-
-// NewService creates a Service backed by q and traced via tracer.
-func NewService(q *pgdb.Queries, tracer trace.Tracer) *Service {
-    return &Service{q: q, tracer: tracer}
-}
-
-func (s *Service) Create<Domain>(ctx context.Context, in Create<Domain>Input) (*pgdb.<Domain>, error) {
-    ctx, span := s.tracer.Start(ctx, "<domain>.Create<Domain>")
-    defer span.End()
-
-    id, err := shared.GenerateID()
-    if err != nil {
-        span.RecordError(err)
-        span.SetStatus(codes.Error, err.Error())
-        return nil, fmt.Errorf("generate id: %w", err)
-    }
-
-    row, err := s.q.Create<Domain>(ctx, pgdb.Create<Domain>Params{
-        ID: id, Name: in.Name, CreatedAt: time.Now(),
-    })
-    if err != nil {
-        span.RecordError(err)
-        span.SetStatus(codes.Error, err.Error())
-        return nil, fmt.Errorf("create<Domain>: %w", err)
-    }
-    return &row, nil
-}
-
-func (s *Service) Get<Domain>ByID(ctx context.Context, id string) (*pgdb.<Domain>, error) {
-    ctx, span := s.tracer.Start(ctx, "<domain>.Get<Domain>ByID")
-    defer span.End()
-
-    row, err := s.q.Get<Domain>ByID(ctx, id)
-    if err != nil {
-        if errors.Is(err, pgx.ErrNoRows) {
-            return nil, ErrNotFound
-        }
-        span.RecordError(err)
-        span.SetStatus(codes.Error, err.Error())
-        return nil, fmt.Errorf("get<Domain>ByID: %w", err)
-    }
-    return &row, nil
-}
-
-func (s *Service) List<Domain>s(ctx context.Context) ([]*pgdb.<Domain>, error) {
-    ctx, span := s.tracer.Start(ctx, "<domain>.List<Domain>s")
-    defer span.End()
-
-    rows, err := s.q.List<Domain>s(ctx)
-    if err != nil {
-        span.RecordError(err)
-        span.SetStatus(codes.Error, err.Error())
-        return nil, fmt.Errorf("list<Domain>s: %w", err)
-    }
-    out := make([]*pgdb.<Domain>, 0, len(rows))
-    for i := range rows {
-        out = append(out, &rows[i])
-    }
-    return out, nil
-}
-
-func (s *Service) Update<Domain>(ctx context.Context, id string, in Update<Domain>Input) (*pgdb.<Domain>, error) {
-    ctx, span := s.tracer.Start(ctx, "<domain>.Update<Domain>")
-    defer span.End()
-
-    existing, err := s.Get<Domain>ByID(ctx, id)
-    if err != nil {
-        return nil, err
-    }
-    if in.Name != "" {
-        existing.Name = in.Name
-    }
-    row, err := s.q.Update<Domain>(ctx, pgdb.Update<Domain>Params{
-        ID: id, Name: existing.Name,
-    })
-    if err != nil {
-        if errors.Is(err, pgx.ErrNoRows) {
-            return nil, ErrNotFound
-        }
-        span.RecordError(err)
-        span.SetStatus(codes.Error, err.Error())
-        return nil, fmt.Errorf("update<Domain>: %w", err)
-    }
-    return &row, nil
-}
-
-func (s *Service) Delete<Domain>(ctx context.Context, id string) error {
-    ctx, span := s.tracer.Start(ctx, "<domain>.Delete<Domain>")
-    defer span.End()
-
-    result, err := s.q.Delete<Domain>(ctx, id)
-    if err != nil {
-        span.RecordError(err)
-        span.SetStatus(codes.Error, err.Error())
-        return fmt.Errorf("delete<Domain>: %w", err)
-    }
-    if result.RowsAffected() == 0 {
-        return ErrNotFound
-    }
-    return nil
-}
-```
-
----
-
-## Step 4 — mapping/ layer
-
-### `internal/<domain>/mapping/mapping.go`
-
-```go
-// Package <domain>mapping provides type conversions for the <domain> domain.
-package <domain>mapping
-
-import (
-    "time"
-    pgdb "restful-boilerplate/pkg/postgres/db"
+	pgdb "restful-boilerplate/pkg/postgres/db"
 )
 
 // <Domain>Response is the HTTP JSON response shape for a <domain>.
 type <Domain>Response struct {
-    ID        string    `json:"id"`
-    Name      string    `json:"name"`
-    CreatedAt time.Time `json:"created_at"`
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 // ToResponse converts a pgdb.<Domain> DB model to a <Domain>Response.
 func ToResponse(d pgdb.<Domain>) <Domain>Response {
-    return <Domain>Response{ID: d.ID, Name: d.Name, CreatedAt: d.CreatedAt}
+	return <Domain>Response{ID: d.ID, Name: d.Name, CreatedAt: d.CreatedAt}
 }
 ```
 
 ---
 
-## Step 5 — adapter/ layer
-
-### `internal/<domain>/adapter/http.go`
+## Step 5 — service.\<domain\>.go
 
 ```go
-// Package <domain>adapter handles HTTP requests for the <domain> domain.
-package <domain>adapter
+package <domain>
 
 import (
-    "encoding/json"
-    "errors"
-    "net/http"
+	"context"
+	"errors"
+	"time"
 
-    "restful-boilerplate/internal/app"
-    <domain>core "restful-boilerplate/internal/<domain>/core"
-    <domain>mapping "restful-boilerplate/internal/<domain>/mapping"
-    <domain>model "restful-boilerplate/internal/<domain>/model"
-    "restful-boilerplate/pkg/http"
+	"github.com/jackc/pgx/v5"
+	"go.opentelemetry.io/otel/trace"
+
+	shared "restful-boilerplate/pkg/util"
+	pgdb "restful-boilerplate/pkg/postgres/db"
+	"restful-boilerplate/pkg/telemetry"
 )
 
-// HTTPAdapter handles HTTP requests for the <domain> domain.
-type HTTPAdapter struct {
-    svc *<domain>core.Service
-    val app.Validator
+type <domain>Service struct {
+	q      *pgdb.Queries
+	tracer trace.Tracer
 }
 
-// NewHTTPAdapter creates a new HTTPAdapter.
-func NewHTTPAdapter(svc *<domain>core.Service, val app.Validator) *HTTPAdapter {
-    return &HTTPAdapter{svc: svc, val: val}
+func new<Domain>Service(q *pgdb.Queries, tracer trace.Tracer) *<domain>Service {
+	return &<domain>Service{q: q, tracer: tracer}
+}
+
+func (s *<domain>Service) create<Domain>(ctx context.Context, in Create<Domain>Request) (*pgdb.<Domain>, error) {
+	ctx, span := s.tracer.Start(ctx, "<domain>.create<Domain>")
+	defer span.End()
+
+	id, err := shared.GenerateID()
+	if err != nil {
+		return nil, telemetry.SpanErr(span, err, "generate id")
+	}
+
+	row, err := s.q.Create<Domain>(ctx, pgdb.Create<Domain>Params{
+		ID: id, Name: in.Name, CreatedAt: time.Now(),
+	})
+	if err != nil {
+		return nil, telemetry.SpanErr(span, err, "create<Domain>")
+	}
+	return &row, nil
+}
+
+func (s *<domain>Service) get<Domain>ByID(ctx context.Context, id string) (*pgdb.<Domain>, error) {
+	ctx, span := s.tracer.Start(ctx, "<domain>.get<Domain>ByID")
+	defer span.End()
+
+	row, err := s.q.Get<Domain>ByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, telemetry.SpanErr(span, err, "get<Domain>ByID")
+	}
+	return &row, nil
+}
+
+func (s *<domain>Service) list<Domain>s(ctx context.Context) ([]*pgdb.<Domain>, error) {
+	ctx, span := s.tracer.Start(ctx, "<domain>.list<Domain>s")
+	defer span.End()
+
+	rows, err := s.q.List<Domain>s(ctx)
+	if err != nil {
+		return nil, telemetry.SpanErr(span, err, "list<Domain>s")
+	}
+	out := make([]*pgdb.<Domain>, 0, len(rows))
+	for i := range rows {
+		out = append(out, &rows[i])
+	}
+	return out, nil
+}
+
+func (s *<domain>Service) update<Domain>(ctx context.Context, id string, in Update<Domain>Request) (*pgdb.<Domain>, error) {
+	ctx, span := s.tracer.Start(ctx, "<domain>.update<Domain>")
+	defer span.End()
+
+	existing, err := s.get<Domain>ByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if in.Name != "" {
+		existing.Name = in.Name
+	}
+	row, err := s.q.Update<Domain>(ctx, pgdb.Update<Domain>Params{ID: id, Name: existing.Name})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, telemetry.SpanErr(span, err, "update<Domain>")
+	}
+	return &row, nil
+}
+
+func (s *<domain>Service) delete<Domain>(ctx context.Context, id string) error {
+	ctx, span := s.tracer.Start(ctx, "<domain>.delete<Domain>")
+	defer span.End()
+
+	result, err := s.q.Delete<Domain>(ctx, id)
+	if err != nil {
+		return telemetry.SpanErr(span, err, "delete<Domain>")
+	}
+	if result.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+```
+
+---
+
+## Step 6 — adapter.http.go
+
+```go
+package <domain>
+
+import (
+	"errors"
+	"net/http"
+
+	"restful-boilerplate/internal/app"
+	router "restful-boilerplate/pkg/http"
+)
+
+type httpAdapter struct {
+	svc *<domain>Service
+	val app.Validator
+}
+
+func newHTTPAdapter(svc *<domain>Service, val app.Validator) *httpAdapter {
+	return &httpAdapter{svc: svc, val: val}
+}
+
+func (m *httpAdapter) writeErr(w http.ResponseWriter, err error) {
+	if errors.Is(err, ErrNotFound) {
+		router.WriteJSON(w, http.StatusNotFound, map[string]string{"error": "<domain> not found"})
+		return
+	}
+	router.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 }
 
 // List<Domain>sHandler returns all <domain>s.
-func (m *HTTPAdapter) List<Domain>sHandler(w http.ResponseWriter, r *http.Request) {
-    items, err := m.svc.List<Domain>s(r.Context())
-    if err != nil {
-        router.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-        return
-    }
-    resp := make([]<domain>mapping.<Domain>Response, 0, len(items))
-    for _, d := range items {
-        resp = append(resp, <domain>mapping.ToResponse(*d))
-    }
-    router.WriteJSON(w, http.StatusOK, resp)
+//
+//	@Summary      List <domain>s
+//	@Tags         <domain>s
+//	@Produce      json
+//	@Success      200  {array}   <Domain>Response
+//	@Failure      500  {object}  map[string]string
+//	@Router       /<domain>s [get]
+func (m *httpAdapter) list<Domain>sHandler(w http.ResponseWriter, r *http.Request) {
+	items, err := m.svc.list<Domain>s(r.Context())
+	if err != nil {
+		m.writeErr(w, err)
+		return
+	}
+	resp := make([]<Domain>Response, 0, len(items))
+	for _, d := range items {
+		resp = append(resp, ToResponse(*d))
+	}
+	router.WriteJSON(w, http.StatusOK, resp)
 }
 
-// Create<Domain>Handler creates a new <domain>.
-func (m *HTTPAdapter) Create<Domain>Handler(w http.ResponseWriter, r *http.Request) {
-    var req <domain>model.Create<Domain>Request
-    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-        router.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
-        return
-    }
-    if err := m.val.Validate(&req); err != nil {
-        router.WriteJSON(w, http.StatusUnprocessableEntity, err)
-        return
-    }
-    d, err := m.svc.Create<Domain>(r.Context(), req)
-    if err != nil {
-        router.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-        return
-    }
-    router.WriteJSON(w, http.StatusCreated, <domain>mapping.ToResponse(*d))
+// create<Domain>Handler creates a new <domain>.
+//
+//	@Summary      Create <domain>
+//	@Tags         <domain>s
+//	@Accept       json
+//	@Produce      json
+//	@Param        body  body      Create<Domain>Request  true  "<Domain> data"
+//	@Success      201   {object}  <Domain>Response
+//	@Failure      400   {object}  map[string]string
+//	@Failure      422   {object}  map[string]string
+//	@Failure      500   {object}  map[string]string
+//	@Router       /<domain>s [post]
+func (m *httpAdapter) create<Domain>Handler(w http.ResponseWriter, r *http.Request) {
+	var req Create<Domain>Request
+	if !router.Bind(m.val, w, r, &req) {
+		return
+	}
+	d, err := m.svc.create<Domain>(r.Context(), req)
+	if err != nil {
+		m.writeErr(w, err)
+		return
+	}
+	router.WriteJSON(w, http.StatusCreated, ToResponse(*d))
 }
 
-// Get<Domain>ByIDHandler gets a <domain> by ID.
-func (m *HTTPAdapter) Get<Domain>ByIDHandler(w http.ResponseWriter, r *http.Request) {
-    d, err := m.svc.Get<Domain>ByID(r.Context(), r.PathValue("id"))
-    if err != nil {
-        if errors.Is(err, <domain>core.ErrNotFound) {
-            router.WriteJSON(w, http.StatusNotFound, map[string]string{"error": "<domain> not found"})
-            return
-        }
-        router.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-        return
-    }
-    router.WriteJSON(w, http.StatusOK, <domain>mapping.ToResponse(*d))
+// get<Domain>ByIDHandler gets a <domain> by ID.
+//
+//	@Summary      Get <domain> by ID
+//	@Tags         <domain>s
+//	@Produce      json
+//	@Param        id   path      string  true  "<Domain> ID"
+//	@Success      200  {object}  <Domain>Response
+//	@Failure      404  {object}  map[string]string
+//	@Failure      500  {object}  map[string]string
+//	@Router       /<domain>s/{id} [get]
+func (m *httpAdapter) get<Domain>ByIDHandler(w http.ResponseWriter, r *http.Request) {
+	d, err := m.svc.get<Domain>ByID(r.Context(), r.PathValue("id"))
+	if err != nil {
+		m.writeErr(w, err)
+		return
+	}
+	router.WriteJSON(w, http.StatusOK, ToResponse(*d))
 }
 
-// Update<Domain>Handler updates a <domain>.
-func (m *HTTPAdapter) Update<Domain>Handler(w http.ResponseWriter, r *http.Request) {
-    var req <domain>model.Update<Domain>Request
-    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-        router.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
-        return
-    }
-    if err := m.val.Validate(&req); err != nil {
-        router.WriteJSON(w, http.StatusUnprocessableEntity, err)
-        return
-    }
-    d, err := m.svc.Update<Domain>(r.Context(), r.PathValue("id"), req)
-    if err != nil {
-        if errors.Is(err, <domain>core.ErrNotFound) {
-            router.WriteJSON(w, http.StatusNotFound, map[string]string{"error": "<domain> not found"})
-            return
-        }
-        router.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-        return
-    }
-    router.WriteJSON(w, http.StatusOK, <domain>mapping.ToResponse(*d))
+// update<Domain>Handler updates a <domain>.
+//
+//	@Summary      Update <domain>
+//	@Tags         <domain>s
+//	@Accept       json
+//	@Produce      json
+//	@Param        id    path      string                 true  "<Domain> ID"
+//	@Param        body  body      Update<Domain>Request  true  "<Domain> data"
+//	@Success      200   {object}  <Domain>Response
+//	@Failure      400   {object}  map[string]string
+//	@Failure      404   {object}  map[string]string
+//	@Failure      500   {object}  map[string]string
+//	@Router       /<domain>s/{id} [put]
+func (m *httpAdapter) update<Domain>Handler(w http.ResponseWriter, r *http.Request) {
+	var req Update<Domain>Request
+	if !router.Bind(m.val, w, r, &req) {
+		return
+	}
+	d, err := m.svc.update<Domain>(r.Context(), r.PathValue("id"), req)
+	if err != nil {
+		m.writeErr(w, err)
+		return
+	}
+	router.WriteJSON(w, http.StatusOK, ToResponse(*d))
 }
 
-// Delete<Domain>Handler deletes a <domain>.
-func (m *HTTPAdapter) Delete<Domain>Handler(w http.ResponseWriter, r *http.Request) {
-    if err := m.svc.Delete<Domain>(r.Context(), r.PathValue("id")); err != nil {
-        if errors.Is(err, <domain>core.ErrNotFound) {
-            router.WriteJSON(w, http.StatusNotFound, map[string]string{"error": "<domain> not found"})
-            return
-        }
-        router.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-        return
-    }
-    w.WriteHeader(http.StatusNoContent)
+// delete<Domain>Handler deletes a <domain>.
+//
+//	@Summary      Delete <domain>
+//	@Tags         <domain>s
+//	@Produce      json
+//	@Param        id   path      string  true  "<Domain> ID"
+//	@Success      204
+//	@Failure      404  {object}  map[string]string
+//	@Failure      500  {object}  map[string]string
+//	@Router       /<domain>s/{id} [delete]
+func (m *httpAdapter) delete<Domain>Handler(w http.ResponseWriter, r *http.Request) {
+	if err := m.svc.delete<Domain>(r.Context(), r.PathValue("id")); err != nil {
+		m.writeErr(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 ```
 
 ---
 
-## Step 6 — module.go (domain root)
-
-### `internal/<domain>/module.go`
+## Step 7 — module.\<domain\>.go
 
 ```go
 // Package <domain> registers the <domain> module.
 package <domain>
 
 import (
-    "restful-boilerplate/internal/app"
-    <domain>adapter "restful-boilerplate/internal/<domain>/adapter"
-    <domain>core "restful-boilerplate/internal/<domain>/core"
-    router "restful-boilerplate/pkg/http"
+	"restful-boilerplate/internal/app"
+	router "restful-boilerplate/pkg/http"
 )
 
 // Module exposes <domain> endpoints over HTTP.
 type Module struct {
-    httpAdapter *<domain>adapter.HTTPAdapter
+	httpAdapter *httpAdapter
 }
 
 // NewModule wires the <domain> service from the shared App container.
 func NewModule(a *app.App) *Module {
-    svc := <domain>core.NewService(a.Queries, a.Tracer.Tracer("<domain>"))
-    return &Module{httpAdapter: <domain>adapter.NewHTTPAdapter(svc, a.Validator)}
+	svc := new<Domain>Service(a.Queries, a.Tracer.Tracer("<domain>"))
+	return &Module{httpAdapter: newHTTPAdapter(svc, a.Validator)}
 }
 
 // RegisterRoutes mounts all <domain> endpoints onto g.
 func (m *Module) RegisterRoutes(g *router.Group) {
-    g.GET("/", m.httpAdapter.List<Domain>sHandler)
-    g.POST("/", m.httpAdapter.Create<Domain>Handler)
-    g.GET("/{id}", m.httpAdapter.Get<Domain>ByIDHandler)
-    g.PUT("/{id}", m.httpAdapter.Update<Domain>Handler)
-    g.DELETE("/{id}", m.httpAdapter.Delete<Domain>Handler)
+	g.GET("/", m.httpAdapter.list<Domain>sHandler)
+	g.POST("/", m.httpAdapter.create<Domain>Handler)
+	g.GET("/{id}", m.httpAdapter.get<Domain>ByIDHandler)
+	g.PUT("/{id}", m.httpAdapter.update<Domain>Handler)
+	g.DELETE("/{id}", m.httpAdapter.delete<Domain>Handler)
 }
 ```
 
 ---
 
-## Step 7 — Wire into main.go
+## Step 8 — Wire into main.go
 
 ```go
 import (
-    "<domain>" "restful-boilerplate/internal/<domain>"
+    <domain> "restful-boilerplate/internal/<domain>"
 )
 
 // Inside r.Group("/v1", ...):
@@ -456,7 +436,7 @@ g.Group("/<domain>s", <domain>.NewModule(a).RegisterRoutes)
 
 ---
 
-## Step 8 — Regenerate Swagger docs
+## Step 9 — Regenerate Swagger docs
 
 ```bash
 go tool swag init -g main.go -o docs/
@@ -470,12 +450,11 @@ make check
 - [ ] `pkg/postgres/migrations/<domain>.sql` — CREATE TABLE (TIMESTAMPTZ for timestamps)
 - [ ] `pkg/postgres/queries/<domain>.sql` — CRUD queries with `$1, $2, ...` params
 - [ ] `go tool sqlc generate` + `go build ./...`
-- [ ] `internal/<domain>/model/errors.go` — ErrNotFound sentinel
-- [ ] `internal/<domain>/model/dto.go` — Create/UpdateXRequest with validate + example tags
-- [ ] `internal/<domain>/core/<domain>.go` — ErrNotFound + type aliases from model
-- [ ] `internal/<domain>/core/service.go` — Service + NewService + all CRUD methods (pgdb, pgx.ErrNoRows)
-- [ ] `internal/<domain>/mapping/mapping.go` — <Domain>Response + ToResponse (pgdb.<Domain>)
-- [ ] `internal/<domain>/adapter/http.go` — HTTPAdapter + exported handler methods
-- [ ] `internal/<domain>/module.go` — Module + NewModule(a *app.App) + RegisterRoutes
+- [ ] `internal/<domain>/domain.error.go` — ErrNotFound sentinel
+- [ ] `internal/<domain>/domain.dto.go` — Create/UpdateXRequest with validate + example tags
+- [ ] `internal/<domain>/mapping.response.go` — <Domain>Response + ToResponse (pgdb.<Domain>)
+- [ ] `internal/<domain>/service.<domain>.go` — unexported service + all CRUD methods
+- [ ] `internal/<domain>/adapter.http.go` — unexported httpAdapter + handler methods
+- [ ] `internal/<domain>/module.<domain>.go` — Module + NewModule(a *app.App) + RegisterRoutes
 - [ ] `main.go` — add group wiring (import domain root package)
 - [ ] `make swagger` + `make check`

@@ -3,7 +3,7 @@ name: gen-test
 description: Generate Go unit and integration tests for handlers, service, or DTOs using table-driven tests, net/http httptest, and PostgreSQL
 ---
 
-Generate idiomatic Go tests for the 3-folder structure. Uses stdlib only. No external test libraries (no testify, etc.).
+Generate idiomatic Go tests for the flat domain package structure. Uses stdlib only. No external test libraries (no testify, etc.).
 
 ## Step 0 — Invoke test-master first
 
@@ -18,9 +18,10 @@ Let test-master apply its full skill set. Use its complete output to build a tes
 
 ## Rules
 
-- Service tests live in `internal/<domain>/core/service_test.go` (external test package `package <domain>core_test`).
-- DTO/input tests live in `internal/<domain>/model/dto_test.go` (internal test package `package <domain>model`).
-- Handler/module tests live in `internal/<domain>/module.test.go` (internal test package `package <domain>`).
+- All domain files are in the same flat package `package <domain>`.
+- Service tests live in `internal/<domain>/service_test.go` (external test package `package <domain>_test`).
+- DTO tests live in `internal/<domain>/domain_dto_test.go` (internal test package `package <domain>`).
+- Handler/module tests live in `internal/<domain>/module_test.go` (internal test package `package <domain>`).
 - Use **table-driven tests**: `tests := []struct{ name string; ... }{ {...}, ... }` with `t.Run(tt.name, ...)`.
 - Use `t.Fatal` / `t.Errorf` — never `panic`.
 - Test both happy path and error cases.
@@ -35,78 +36,61 @@ When invoked with a file path, generate the corresponding test file:
 
 | Source file | Test file | What to test |
 |-------------|-----------|--------------|
-| `internal/<domain>/model/dto.go` | `internal/<domain>/model/dto_test.go` | Validator tag behaviour |
-| `internal/<domain>/core/service.go` | `internal/<domain>/core/service_test.go` | CRUD ops with PostgreSQL |
-| `internal/<domain>/adapter/http.go` | `internal/<domain>/module.test.go` | HTTP status codes via httptest |
+| `internal/<domain>/domain.dto.go` | `internal/<domain>/domain_dto_test.go` | Validator tag behaviour |
+| `internal/<domain>/service.<domain>.go` | `internal/<domain>/service_test.go` | CRUD ops with PostgreSQL |
+| `internal/<domain>/adapter.http.go` | `internal/<domain>/module_test.go` | HTTP status codes via httptest |
 
 ---
 
-## Test helper — service setup (`core/service_test.go`)
+## Test helper — service setup (`service_test.go`)
 
-Service tests are in the **external** test package (`package <domain>core_test`). They require PostgreSQL via `TEST_DATABASE_URL`:
+Service tests are in the **external** test package (`package <domain>_test`). They require PostgreSQL via `TEST_DATABASE_URL`.
+
+Note: service struct and constructor are unexported — test via the module's `NewModule` or expose a test helper if needed. Alternatively, test service behaviour through the HTTP layer using `module_test.go`.
 
 ```go
-package usercore_test
+package user_test
 
 import (
-    "context"
-    "errors"
+    "net/http"
+    "net/http/httptest"
+    "strings"
     "testing"
 
     "go.opentelemetry.io/otel/trace/noop"
 
-    usercore "restful-boilerplate/internal/user/core"
-    pgdb    "restful-boilerplate/pkg/postgres/db"
+    "restful-boilerplate/internal/app"
+    "restful-boilerplate/internal/user"
+    router "restful-boilerplate/pkg/http"
+    pgdb   "restful-boilerplate/pkg/postgres/db"
     "restful-boilerplate/pkg/testutil"
+    cv "restful-boilerplate/pkg/validator"
 )
 
-func newTestService(t *testing.T) *usercore.Service {
+func newTestHandler(t *testing.T) http.Handler {
     t.Helper()
     pool := testutil.SetupPgTestDB(t)  // skips if TEST_DATABASE_URL unset
-    q := pgdb.New(pool)
-    return usercore.NewService(q, noop.NewTracerProvider().Tracer("test"))
-}
-
-func TestCreateUser(t *testing.T) {
-    svc := newTestService(t)
-    ctx := context.Background()
-
-    u, err := svc.CreateUser(ctx, usercore.CreateUserInput{Name: "Alice", Email: "alice@example.com"})
-    if err != nil {
-        t.Fatalf("CreateUser() error = %v", err)
+    a := &app.App{
+        Queries:   pgdb.New(pool),
+        Validator: cv.New(),
+        Tracer:    noop.NewTracerProvider(),
     }
-    if u.ID == "" {
-        t.Error("expected non-empty ID")
-    }
+    srv := router.NewRouter()
+    srv.Group("/users", func(g *router.Group) {
+        user.NewModule(a).RegisterRoutes(g)
+    })
+    return srv.Handler
 }
-
-func TestGetUserByID_NotFound(t *testing.T) {
-    svc := newTestService(t)
-    _, err := svc.GetUserByID(context.Background(), "nonexistent")
-    if !errors.Is(err, usercore.ErrNotFound) {
-        t.Errorf("expected ErrNotFound, got %v", err)
-    }
-}
-```
-
-To run service tests locally:
-```bash
-TEST_DATABASE_URL="postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable" go test ./internal/user/core/...
-```
-
-Start PostgreSQL via docker-compose first:
-```bash
-cd infra && docker-compose up -d postgres
 ```
 
 ---
 
-## DTO test pattern (`model/dto_test.go`)
+## DTO test pattern (`domain_dto_test.go`)
 
-DTOs live in `internal/<domain>/model/dto.go`. Tests use the **internal** `<domain>model` package — no database needed:
+Internal package — no database needed:
 
 ```go
-package usermodel
+package user
 
 import (
     "testing"
@@ -140,7 +124,7 @@ func TestCreateUserRequest(t *testing.T) {
 
 ---
 
-## Handler/module test pattern (`module.test.go`)
+## Handler/module test pattern (`module_test.go`)
 
 Module tests construct an `app.App` and call `NewModule(a)` — same DI path as production. Requires PostgreSQL:
 
@@ -196,7 +180,7 @@ func TestCreateUser_HTTP_Success(t *testing.T) {
 
 ```bash
 # DTO tests (no DB needed):
-go test ./internal/<domain>/model/...
+go test ./internal/<domain>/...
 
 # Service + handler tests (requires PostgreSQL):
 TEST_DATABASE_URL="postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable" go test ./internal/<domain>/...
