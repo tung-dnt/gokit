@@ -16,11 +16,11 @@ import (
 )
 
 type userService struct {
-	db     *pgdb.Queries
+	db     pgdb.Querier
 	tracer trace.Tracer
 }
 
-func newUserService(q *pgdb.Queries, tracer trace.Tracer) *userService {
+func newUserService(q pgdb.Querier, tracer trace.Tracer) *userService {
 	return &userService{db: q, tracer: tracer}
 }
 

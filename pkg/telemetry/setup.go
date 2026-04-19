@@ -3,16 +3,14 @@ package telemetry
 import (
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
 
 	"restful-boilerplate/pkg/logger"
 )
 
-// SetupAll initialises OpenTelemetry tracing, metrics, log export, and structured log file output.
+// SetupAll initialises OpenTelemetry tracing, metrics, and log export.
 // logFormat controls stdout output: "pretty" for colorized, "json" (default) for JSON.
-// Returns a single cleanup func that flushes all providers and closes the log file.
-func SetupAll(ctx context.Context, logPath string, logFormat string) (func(), error) {
+// Returns a single cleanup func that flushes all providers.
+func SetupAll(ctx context.Context, logFormat string) (func(), error) {
 	res, err := NewResource(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("otel resource: %w", err)
@@ -36,25 +34,9 @@ func SetupAll(ctx context.Context, logPath string, logFormat string) (func(), er
 		return nil, err
 	}
 
-	if dir := filepath.Dir(logPath); dir != "." {
-		if mkdirErr := os.MkdirAll(dir, 0o750); mkdirErr != nil {
-			_ = shutdownLogs(ctx)   //nolint:errcheck // best-effort cleanup on error path
-			_ = shutdownMeter(ctx)  //nolint:errcheck // best-effort cleanup on error path
-			_ = shutdownTracer(ctx) //nolint:errcheck // best-effort cleanup on error path
-			return nil, fmt.Errorf("create logs dir: %w", mkdirErr)
-		}
-	}
-
-	closeLog, err := logger.Setup(logPath, logFormat, logProvider)
-	if err != nil {
-		_ = shutdownLogs(ctx)   //nolint:errcheck // best-effort cleanup on error path
-		_ = shutdownMeter(ctx)  //nolint:errcheck // best-effort cleanup on error path
-		_ = shutdownTracer(ctx) //nolint:errcheck // best-effort cleanup on error path
-		return nil, fmt.Errorf("setup logger: %w", err)
-	}
+	logger.Setup(logFormat, logProvider)
 
 	return func() {
-		_ = closeLog()          //nolint:errcheck // best-effort cleanup on shutdown
 		_ = shutdownLogs(ctx)   //nolint:errcheck // best-effort cleanup on shutdown
 		_ = shutdownMeter(ctx)  //nolint:errcheck // best-effort cleanup on shutdown
 		_ = shutdownTracer(ctx) //nolint:errcheck // best-effort cleanup on shutdown

@@ -50,7 +50,7 @@ func run() error {
 	cfg := config.Load(os.Getenv)
 
 	// Unified telemetry: traces + metrics + logs (all via OTLP to SigNoz).
-	stopTelemetry, err := telemetry.SetupAll(ctx, "./logs/app.log", cfg.LogFormat)
+	stopTelemetry, err := telemetry.SetupAll(ctx, cfg.LogFormat)
 	if err != nil {
 		return fmt.Errorf("setup telemetry: %w", err)
 	}

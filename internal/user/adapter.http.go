@@ -2,22 +2,34 @@
 package user
 
 import (
+	"context"
 	"errors"
 	"net/http"
 
 	"restful-boilerplate/internal/app"
 	router "restful-boilerplate/pkg/http"
 	"restful-boilerplate/pkg/logger"
+	pgdb "restful-boilerplate/pkg/postgres/db"
 )
+
+// userSvc is the service seam consumed by httpAdapter. Concrete *userService
+// satisfies it; tests inject a mock implementation.
+type userSvc interface {
+	createUser(ctx context.Context, in CreateUserRequest) (*pgdb.User, error)
+	updateUser(ctx context.Context, id string, in UpdateUserRequest) (*pgdb.User, error)
+	deleteUser(ctx context.Context, id string) error
+	listUsers(ctx context.Context) ([]*pgdb.User, error)
+	getUserByID(ctx context.Context, id string) (*pgdb.User, error)
+}
 
 // httpAdapter handles HTTP requests for the user domain.
 type httpAdapter struct {
-	svc *userService
+	svc userSvc
 	val app.Validator
 }
 
 // newHTTPAdapter creates a new HTTPAdapter with the given service and validator.
-func newHTTPAdapter(svc *userService, val app.Validator) *httpAdapter {
+func newHTTPAdapter(svc userSvc, val app.Validator) *httpAdapter {
 	return &httpAdapter{svc: svc, val: val}
 }
 
@@ -45,7 +57,8 @@ func (m *httpAdapter) writeErr(r *http.Request, w http.ResponseWriter, err error
 //	@Failure      500  {object}  map[string]string
 //	@Router       /users [get]
 func (m *httpAdapter) listUsersHandler(w http.ResponseWriter, r *http.Request) {
-	users, err := m.svc.listUsers(r.Context())
+	ctx := r.Context()
+	users, err := m.svc.listUsers(ctx)
 	if err != nil {
 		m.writeErr(r, w, err)
 		return

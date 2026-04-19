@@ -1,0 +1,43 @@
+# Version control
+.git
+.gitignore
+.github
+
+# Build artifacts
+bin/
+tmp/
+*.exe
+*.out
+
+# Local data / logs
+logs/
+data.db
+*.db
+*.sqlite
+*.sqlite3
+
+# Editor / OS
+.idea/
+.vscode/
+.DS_Store
+*.swp
+
+# Secrets & local env
+.env
+.env.*
+!.env.example
+
+# Docker / infra self-reference
+infra/signoz
+infra/docker-compose.yaml
+infra/Dockerfile
+.dockerignore
+
+# Docs / tests / tooling that aren't needed for the runtime build
+docs/swagger.json
+docs/swagger.yaml
+scripts/
+README.md
+CLAUDE.md
+commitlint.yaml
+.golangci.yml

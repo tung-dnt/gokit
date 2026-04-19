@@ -3,7 +3,6 @@ package logger
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"os"
 
@@ -12,17 +11,11 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// Setup initialises slog writing to stdout, a log file, and optionally an OTLP exporter.
+// Setup initialises slog writing to stdout and optionally an OTLP exporter.
 // logFormat controls stdout output: "pretty" for colorized human-readable, "json" (default) for JSON.
-// The file always receives JSON. When logProvider is non-nil, logs are also exported via OTLP.
+// When logProvider is non-nil, logs are also exported via OTLP.
 // Sets slog.Default so callers can use slog package-level functions.
-// Returns a close function for the log file.
-func Setup(logPath string, logFormat string, logProvider *sdklog.LoggerProvider) (func() error, error) {
-	f, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644) //nolint:gosec // path is internal, not user-supplied
-	if err != nil {
-		return nil, fmt.Errorf("open log file: %w", err)
-	}
-
+func Setup(logFormat string, logProvider *sdklog.LoggerProvider) {
 	opts := &slog.HandlerOptions{Level: slog.LevelInfo}
 
 	var stdoutHandler slog.Handler
@@ -32,9 +25,7 @@ func Setup(logPath string, logFormat string, logProvider *sdklog.LoggerProvider)
 		stdoutHandler = slog.NewJSONHandler(os.Stdout, opts)
 	}
 
-	fileHandler := slog.NewJSONHandler(f, opts)
-
-	handlers := []slog.Handler{stdoutHandler, fileHandler}
+	handlers := []slog.Handler{stdoutHandler}
 	if logProvider != nil {
 		handlers = append(handlers, otelslog.NewHandler("restful-boilerplate",
 			otelslog.WithLoggerProvider(logProvider),
@@ -43,7 +34,6 @@ func Setup(logPath string, logFormat string, logProvider *sdklog.LoggerProvider)
 	}
 
 	slog.SetDefault(slog.New(&fanoutHandler{handlers: handlers}))
-	return f.Close, nil
 }
 
 // FromContext returns slog.Default pre-populated with trace_id and span_id from ctx.
