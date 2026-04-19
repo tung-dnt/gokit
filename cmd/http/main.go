@@ -10,11 +10,15 @@ import (
 	"os/signal"
 	"time"
 
+	"github.com/firebase/genkit/go/genkit"
+	"github.com/firebase/genkit/go/plugins/googlegenai"
 	httpSwagger "github.com/swaggo/http-swagger/v2"
+	opentelemetry "github.com/xavidop/genkit-opentelemetry-go"
 	"go.opentelemetry.io/otel"
 
 	_ "restful-boilerplate/docs"
 	"restful-boilerplate/internal/app"
+	"restful-boilerplate/internal/recipe"
 	"restful-boilerplate/internal/user"
 	"restful-boilerplate/pkg/config"
 	router "restful-boilerplate/pkg/http"
@@ -47,11 +51,28 @@ func run() error {
 
 	cfg := config.Load(os.Getenv)
 
-	stopTracing, err := telemetry.SetupAll(ctx, "./logs/app.log", cfg.LogFormat)
+	// Unified telemetry: traces + metrics + logs (all via OTLP to SigNoz).
+	stopTelemetry, err := telemetry.SetupAll(ctx, "./logs/app.log", cfg.LogFormat)
 	if err != nil {
-		return fmt.Errorf("setup tracing: %w", err)
+		return fmt.Errorf("setup telemetry: %w", err)
 	}
-	defer stopTracing()
+	defer stopTelemetry()
+
+	// Genkit OTEL plugin — exports Genkit-internal spans (LLM calls, embeddings,
+	// retrieval, flows) via OTLP alongside the app's own spans.
+	otelPlugin := opentelemetry.New(opentelemetry.Config{
+		ServiceName:    "restful-boilerplate",
+		ForceExport:    true,
+		OTLPEndpoint:   telemetry.Endpoint(),
+		OTLPUseHTTP:    true,
+		MetricInterval: 15 * time.Second,
+	})
+
+	ai := genkit.Init(ctx,
+		genkit.WithPlugins(&googlegenai.GoogleAI{}, otelPlugin),
+		genkit.WithDefaultModel("googleai/gemini-2.5-flash"),
+		genkit.WithPromptDir("./prompts"),
+	)
 
 	pool, err := postgres.OpenDB(ctx, cfg.DatabaseURL)
 	if err != nil {
@@ -66,6 +87,7 @@ func run() error {
 		Queries:   pgdb.New(pool),
 		Validator: v,
 		Tracer:    otel.GetTracerProvider(),
+		Agent:     ai,
 	}
 
 	r := router.NewRouter()
@@ -73,12 +95,19 @@ func run() error {
 	r.Use(otelhttp.Middleware("restful-boilerplate"))
 	r.Use(logger.Middleware)
 	r.Use(recovery.Middleware)
-	r.GET("/metrics", metric.Handler().ServeHTTP)
+
+	recipeMod, err := recipe.NewModule(a)
+	if err != nil {
+		return fmt.Errorf("recipe module: %w", err)
+	}
 
 	r.Group("/v1", func(g *router.Group) {
 		g.Prefix("/api")
 		g.ANY("/swagger/", httpSwagger.WrapHandler)
 		g.Group("/users", user.NewModule(a).RegisterRoutes)
+		g.Group("/agents", func(g *router.Group) {
+			g.Group("/recipes", recipeMod.RegisterRoutes)
+		})
 	})
 
 	addr := net.JoinHostPort(cfg.Server.Host, cfg.Server.Port)

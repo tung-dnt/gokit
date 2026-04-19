@@ -1,9 +1,10 @@
-// Package telemetry initialises the OpenTelemetry TracerProvider.
+// Package telemetry initialises the OpenTelemetry providers (traces, metrics, logs).
 package telemetry
 
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"os"
 
 	"go.opentelemetry.io/otel"
@@ -14,24 +15,26 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 )
 
-// Setup initialises a global OTLP TracerProvider and returns a shutdown function.
-// The endpoint is read from OTEL_EXPORTER_OTLP_ENDPOINT (default http://localhost:4318).
-func Setup(ctx context.Context) (func(context.Context) error, error) {
-	endpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
-	if endpoint == "" {
-		endpoint = "http://localhost:4318"
+// Endpoint returns the OTLP endpoint from OTEL_EXPORTER_OTLP_ENDPOINT or the default.
+func Endpoint() string {
+	if v := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"); v != "" {
+		return v
 	}
+	return "http://localhost:4318"
+}
 
-	exp, err := otlptracehttp.New(ctx, otlptracehttp.WithEndpointURL(endpoint))
-	if err != nil {
-		return nil, fmt.Errorf("otlptrace exporter: %w", err)
-	}
-
-	res, err := resource.New(ctx,
+// NewResource creates the shared OTEL resource used by all providers.
+func NewResource(ctx context.Context) (*resource.Resource, error) {
+	return resource.New(ctx,
 		resource.WithAttributes(semconv.ServiceName("restful-boilerplate")),
 	)
+}
+
+// SetupTraces initialises a global OTLP TracerProvider and returns a shutdown function.
+func SetupTraces(ctx context.Context, res *resource.Resource) (func(context.Context) error, error) {
+	exp, err := otlptracehttp.New(ctx, otlptracehttp.WithEndpointURL(Endpoint()))
 	if err != nil {
-		return nil, fmt.Errorf("otel resource: %w", err)
+		return nil, fmt.Errorf("otlptrace exporter: %w", err)
 	}
 
 	tp := sdktrace.NewTracerProvider(
@@ -43,4 +46,14 @@ func Setup(ctx context.Context) (func(context.Context) error, error) {
 	otel.SetTextMapPropagator(propagation.TraceContext{})
 
 	return tp.Shutdown, nil
+}
+
+// parseEndpoint extracts host:port and scheme from an OTLP endpoint URL.
+// Returns the host:port string and whether TLS should be disabled.
+func parseEndpoint(raw string) (host string, insecure bool) {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "localhost:4318", true
+	}
+	return u.Host, u.Scheme == "http"
 }

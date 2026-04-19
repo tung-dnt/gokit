@@ -3,7 +3,13 @@ package config
 
 import (
 	"time"
+
+	"github.com/joho/godotenv"
 )
+
+func init() {
+	_ = godotenv.Load() //nolint:errcheck // best-effort: .env is optional
+}
 
 // Config holds all application configuration.
 type Config struct {

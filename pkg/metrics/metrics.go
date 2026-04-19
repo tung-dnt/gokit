@@ -1,56 +1,43 @@
-// Package metrics provides Prometheus instrumentation for the HTTP server.
-// It uses a dedicated registry (not prometheus.DefaultRegisterer) so the /metrics
-// endpoint is fully self-contained and does not inherit any stray metrics from
-// third-party libraries that call prometheus.MustRegister on import.
+// Package metrics provides HTTP instrumentation using OpenTelemetry metrics.
+// Metrics are exported via OTLP to the configured collector (e.g. SigNoz).
 package metrics
 
 import (
+	"log/slog"
 	"net/http"
-	"strconv"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/collectors"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 )
 
-// Metrics holds the Prometheus registry and HTTP instrumentation collectors.
+// Metrics holds the OTEL meter instruments for HTTP request tracking.
 type Metrics struct {
-	reg          *prometheus.Registry
-	httpDuration *prometheus.HistogramVec
-	httpTotal    *prometheus.CounterVec
+	httpDuration metric.Float64Histogram
+	httpTotal    metric.Int64Counter
 }
 
-// New creates a Metrics instance with process, Go runtime, and HTTP collectors.
+// New creates a Metrics instance with OTEL HTTP instruments.
 func New() *Metrics {
-	reg := prometheus.NewRegistry()
+	meter := otel.Meter("restful-boilerplate")
 
-	dur := prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Name:    "http_request_duration_seconds",
-		Help:    "HTTP request duration in seconds.",
-		Buckets: prometheus.DefBuckets,
-	}, []string{"method", "status"})
-
-	total := prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "http_requests_total",
-		Help: "Total number of HTTP requests.",
-	}, []string{"method", "path", "status"})
-
-	reg.MustRegister(
-		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
-		collectors.NewGoCollector(
-			collectors.WithGoCollectorRuntimeMetrics(collectors.MetricsAll),
-		),
-		dur,
-		total,
+	dur, err := meter.Float64Histogram("http.server.duration",
+		metric.WithDescription("HTTP request duration in seconds."),
+		metric.WithUnit("s"),
 	)
+	if err != nil {
+		slog.Error("create http duration histogram", "err", err)
+	}
 
-	return &Metrics{reg: reg, httpDuration: dur, httpTotal: total}
-}
+	total, err := meter.Int64Counter("http.server.requests",
+		metric.WithDescription("Total number of HTTP requests."),
+	)
+	if err != nil {
+		slog.Error("create http requests counter", "err", err)
+	}
 
-// Handler returns an http.Handler that serves Prometheus metrics.
-func (m *Metrics) Handler() http.Handler {
-	return promhttp.HandlerFor(m.reg, promhttp.HandlerOpts{})
+	return &Metrics{httpDuration: dur, httpTotal: total}
 }
 
 // Middleware returns HTTP middleware that records request duration and count.
@@ -61,11 +48,14 @@ func (m *Metrics) Middleware(next http.Handler) http.Handler {
 
 		next.ServeHTTP(sw, r)
 
-		status := strconv.Itoa(sw.status)
-		elapsed := time.Since(start).Seconds()
+		attrs := metric.WithAttributes(
+			attribute.String("http.request.method", r.Method),
+			attribute.String("url.path", r.URL.Path),
+			attribute.Int("http.response.status_code", sw.status),
+		)
 
-		m.httpDuration.WithLabelValues(r.Method, status).Observe(elapsed)
-		m.httpTotal.WithLabelValues(r.Method, r.URL.Path, status).Inc()
+		m.httpDuration.Record(r.Context(), time.Since(start).Seconds(), attrs)
+		m.httpTotal.Add(r.Context(), 1, attrs)
 	})
 }
 

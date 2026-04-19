@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-A Go RESTful API boilerplate built on **net/http (stdlib) + PostgreSQL + sqlc** with full observability (OpenTelemetry, Tempo, Loki, Grafana). Uses a 3-folder structure: `internal/` for business modules, `pkg/` for pure utilities, `infra/` for Docker/observability configs only. Each domain is a **flat single package** — all layers (adapter, service, mapping, DTOs, errors) live in `internal/<domain>/` with file-name prefixes instead of sub-packages.
+A Go RESTful API boilerplate built on **net/http (stdlib) + PostgreSQL + sqlc** with full observability (OpenTelemetry + SigNoz). Uses a 3-folder structure: `internal/` for business modules, `pkg/` for pure utilities, `infra/` for Docker/observability configs only. Each domain is a **flat single package** — all layers (adapter, service, mapping, DTOs, errors) live in `internal/<domain>/` with file-name prefixes instead of sub-packages.
 
 **Module:** `restful-boilerplate` | **Go:** 1.26.0 | **Deps:** jackc/pgx/v5, go-playground/validator, swaggo/swag
 
@@ -42,10 +42,10 @@ pkg/                       → Pure utilities — NO business knowledge
     migrations/            → SQL CREATE TABLE files
   config/                  → Env-var config loader
   logger/                  → slog MultiWriter (stdout + ./logs/app.log)
-  metrics/                 → Prometheus metrics (promhttp)
+  metrics/                 → OTEL HTTP metrics (exported via OTLP)
   recovery/                → Recovery middleware (net/http)
   otelhttp/                → Custom net/http OTEL middleware
-  telemetry/               → OTLP TracerProvider setup
+  telemetry/               → OTLP TracerProvider + MeterProvider + LoggerProvider setup
   validator/               → Validator adapter (go-playground/validator)
   testutil/                → Shared test helpers (SetupPgTestDB for PostgreSQL, SetupTestDB for legacy SQLite)
   postgres/                → PostgreSQL connection + migration infra
@@ -57,12 +57,7 @@ pkg/                       → Pure utilities — NO business knowledge
   sqlite/                  → Legacy SQLite layer (kept for reference)
 
 infra/                     → Docker/observability configs ONLY (no Go code)
-  docker-compose.yml
-  alloy/                   → Grafana Alloy log shipper config
-  grafana/                 → Grafana provisioning (dashboards + datasources)
-  loki/                    → Loki config
-  prometheus/              → Prometheus config
-  tempo/                   → Tempo config
+  docker-compose.yml       → PostgreSQL + SigNoz stack (ClickHouse, OTEL Collector, UI)
 
 cmd/
   http/main.go             → net/http server entrypoint (explicit DI, inline wiring)
@@ -170,7 +165,7 @@ make swagger   # go tool swag init -g cmd/http/main.go -o docs/
 # Build binaries
 make build
 
-# Observability stack (Tempo + Loki + Alloy + Grafana + Prometheus)
+# Observability stack (SigNoz — ClickHouse + OTEL Collector + UI on :8080)
 make obs/up
 make obs/down
 ```
@@ -184,4 +179,4 @@ These skills provide detailed patterns on demand — invoke when working in thes
 - **`handler-patterns`** — Handler pipeline, error responses, validation patterns (net/http)
 - **`postgres-config`** — PostgreSQL connection setup, migrations, sqlc codegen, pgx/v5 patterns, env vars
 - **`sqlite-config`** — Legacy SQLite reference (kept for historical context)
-- **`observability`** — OTEL tracing, structured logging, metrics, Grafana stack
+- **`observability`** — OTEL tracing, structured logging, metrics, SigNoz stack

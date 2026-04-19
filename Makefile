@@ -9,7 +9,7 @@ BIN_DIR  := bin
 API_BIN  := $(BIN_DIR)/api
 FE_BIN   := $(BIN_DIR)/frontend
 DB_PATH  := ./data.db
-OBS_DIR  := deploy
+OBS_DIR  := infra
 
 # ─── Help ────────────────────────────────────────────────────────────────────
 
@@ -29,7 +29,7 @@ run: ## Run HTTP server (no hot-reload)
 
 .PHONY: dev
 dev: ## Run HTTP server with hot-reload (air)
-	LOG_FORMAT=pretty go tool air
+	LOG_FORMAT=pretty genkit start -- go tool air
 
 .PHONY: migrate
 migrate: ## Apply PostgreSQL DB migrations
@@ -105,17 +105,17 @@ perf: ## Run k6 performance tests via Docker (BASE_URL=http://... to override)
 ##@ Observability
 
 .PHONY: obs/up
-obs/up: ## Start Prometheus + Grafana (docker compose)
-	docker compose -f $(OBS_DIR)/docker-compose.yml up -d
+obs/up: ## Start SigNoz observability stack (docker compose)
+	docker compose -f $(OBS_DIR)/docker-compose.yaml up -d
 
 .PHONY: obs/down
 obs/down: ## Stop observability stack
-	docker compose -f $(OBS_DIR)/docker-compose.yml down
+	docker compose -f $(OBS_DIR)/docker-compose.yaml down
 
 .PHONY: obs/logs
 obs/logs: ## Tail logs from observability stack
-	docker compose -f $(OBS_DIR)/docker-compose.yml logs -f
+	docker compose -f $(OBS_DIR)/docker-compose.yaml logs -f
 
 .PHONY: obs/ps
 obs/ps: ## Show status of observability containers
-	docker compose -f $(OBS_DIR)/docker-compose.yml ps
+	docker compose -f $(OBS_DIR)/docker-compose.yaml ps
