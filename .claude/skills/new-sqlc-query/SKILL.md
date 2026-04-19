@@ -74,8 +74,9 @@ RETURNING *;
    go tool sqlc generate
    make check
    ```
-3. The generated method appears in `pkg/postgres/db/<domain>.sql.go`
-4. Call it from the service `internal/<domain>/core/service.go` via `s.q.<QueryName>(ctx, ...)`
+3. The generated method appears in `pkg/postgres/db/<domain>.sql.go` AND is added to the `pgdb.Querier` interface in `pkg/postgres/db/querier.go` (because `emit_interface: true` in `sqlc.yaml`).
+4. Call it from the service `internal/<domain>/service.<domain>.go` via `s.db.<QueryName>(ctx, ...)` — services depend on `pgdb.Querier`, not `*pgdb.Queries`.
+5. **Every mock `Querier` in tests (e.g. `internal/user/mock_test.go`) must implement the new method** or the compile-time check `var _ pgdb.Querier = (*mockQuerier)(nil)` will fail. Keep return types plain (`pgdb.<Type>`, `[]pgdb.<Type>`, `pgconn.CommandTag`, `error`) so mocks stay trivial — see the `gen-test` skill.
 
 ## If adding a new column (migration required)
 

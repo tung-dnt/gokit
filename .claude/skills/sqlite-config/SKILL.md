@@ -1,42 +1,9 @@
 ---
 name: sqlite-config
-description: SQLite connection setup and migration reference — legacy layer kept for reference; PostgreSQL is now the primary database
+description: Legacy SQLite reference — the project uses PostgreSQL now. Kept for historical context only.
 user_invocable: false
 ---
 
-> **Note:** SQLite is the legacy database layer. PostgreSQL is now primary. See `postgres-config` skill for current patterns.
-> The SQLite code in `pkg/sqlite/` is retained for reference and the in-memory test driver.
+This project has migrated to PostgreSQL. All new features, queries, and migrations must use the PostgreSQL layer — see the `postgres-config` skill for current patterns (pgx/v5, sqlc codegen, `$1` params, `TIMESTAMPTZ` schema, `pgxpool` connection).
 
-Reference for the SQLite database layer in `pkg/sqlite/`.
-
-## Connection Setup
-
-**`pkg/sqlite/connection.go` — `OpenDB(ctx, path)`**
-
-- Single connection mode: `MaxOpenConns(1)` — serializes access, prevents `SQLITE_BUSY`
-- `PRAGMA busy_timeout=5000` set on every connection open
-- WAL mode enabled for better read concurrency
-- Driver: `modernc.org/sqlite` — pure Go, no CGO required
-
-## Migration System
-
-**`pkg/sqlite/migrate.go` — `Migrate(ctx, db)`**
-
-- Uses `//go:embed migrations/*.sql` to bundle migration files
-- Migration SQL files live in `pkg/sqlite/migrations/` (e.g., `user.sql`)
-
-## sqlc Code Generation
-
-- Config: `sqlc.yaml` (v2 format, SQLite block)
-- Query files: `pkg/sqlite/queries/<domain>.sql` — use `?` placeholders
-- Generated code: `pkg/sqlite/db/` (package `sqlitedb`, uses `database/sql`)
-- Run codegen: `make sqlc` or `go tool sqlc generate`
-
-## Import Paths
-
-```go
-import (
-    sqlitedb "restful-boilerplate/pkg/sqlite/db"  // sqlc-generated Queries
-    pkgdb    "restful-boilerplate/pkg/sqlite"      // OpenDB(), Migrate()
-)
-```
+The `pkg/sqlite/` directory is retained in the tree and `modernc.org/sqlite` is still in `go.mod`, but nothing in the main server wires it up. Reference the SQLite code only when researching history — not when adding new features.

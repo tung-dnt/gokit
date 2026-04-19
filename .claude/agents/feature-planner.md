@@ -96,4 +96,4 @@ cmd/http/main.go — inside the existing `r.Group("/v1", ...)` block:
 - All domain internals are unexported: `httpAdapter`, `<domain>Service`, constructors, CRUD methods
 - Use `router.Bind` for handler decode+validate — NOT manual two-step
 - `ErrNotFound` has a single declaration in `domain.error.go`
-- ID generation: `shared "restful-boilerplate/pkg/util"` → `shared.GenerateID()`
+- ID generation: `shared "gokit/pkg/util"` → `shared.GenerateID()`

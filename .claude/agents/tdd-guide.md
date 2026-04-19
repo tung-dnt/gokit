@@ -44,11 +44,11 @@ import (
 
     "go.opentelemetry.io/otel/trace/noop"
 
-    "restful-boilerplate/internal/app"
-    router "restful-boilerplate/pkg/http"
-    pgdb   "restful-boilerplate/pkg/postgres/db"
-    "restful-boilerplate/pkg/testutil"
-    cv "restful-boilerplate/pkg/validator"
+    "gokit/internal/app"
+    router "gokit/pkg/http"
+    pgdb   "gokit/pkg/postgres/db"
+    "gokit/pkg/testutil"
+    cv "gokit/pkg/validator"
 )
 
 func newTestHandler(t *testing.T) http.Handler {

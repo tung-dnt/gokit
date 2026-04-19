@@ -34,7 +34,7 @@ You are a Go code reviewer specialized in this project's architecture (net/http 
 - OTEL tracing on every method via `telemetry.SpanErr`
 - Errors wrapped: `telemetry.SpanErr(span, err, "opName")` or `fmt.Errorf("opName: %w", err)`
 - `ErrNotFound` is the exported sentinel in `domain.error.go` (same package)
-- ID generation: `shared.GenerateID()` via `shared "restful-boilerplate/pkg/util"`
+- ID generation: `shared.GenerateID()` via `shared "gokit/pkg/util"`
 
 ### DTOs (`domain.dto.go`)
 - go-playground/validator tags: `validate:"required,min=1,max=100"`
