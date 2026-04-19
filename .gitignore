@@ -6,3 +6,5 @@ docs/
 *tmp
 logs/
 .env
+.genkit/
+.genkit

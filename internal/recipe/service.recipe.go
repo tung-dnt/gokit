@@ -118,7 +118,10 @@ func (s *recipeService) queryRecipes(ctx context.Context, req QueryRecipeRequest
 		Context:             cb.String(),
 	}
 
-	result, _, err := s.queryPrompt.Execute(ctx, input)
+	llmCtx, llmSpan := telemetry.StartLLMSpan(ctx, s.tracer, "generate")
+	result, modelResp, err := s.queryPrompt.Execute(llmCtx, input)
+	telemetry.RecordLLMAttrs(llmSpan, llmInfoFromGenkit(modelResp))
+	llmSpan.End()
 	if err != nil {
 		return nil, telemetry.SpanErr(span, err, "recipe.recipeService.queryRecipes: generate")
 	}
