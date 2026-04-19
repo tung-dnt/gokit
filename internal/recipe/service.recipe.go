@@ -69,7 +69,7 @@ func (s *recipeService) indexRecipes(ctx context.Context, in IndexRecipeRequest)
 	ctx, span := s.tracer.Start(ctx, "recipe.recipeService.indexRecipes")
 	defer span.End()
 
-	logger.FromContext(ctx).Info("indexing recipe content")
+	logger.FromContext(ctx).InfoContext(ctx, "indexing recipe content")
 
 	segments := s.chunker.Chunk(in.Content)
 	docs := make([]*ai.Document, len(segments))
@@ -91,7 +91,7 @@ func (s *recipeService) queryRecipes(ctx context.Context, req QueryRecipeRequest
 	ctx, span := s.tracer.Start(ctx, "recipe.recipeService.queryRecipes")
 	defer span.End()
 
-	logger.FromContext(ctx).Info("querying recipes", "question", req.Question)
+	logger.FromContext(ctx).InfoContext(ctx, "querying recipes", "question", req.Question)
 
 	resp, err := genkit.Retrieve(ctx, s.g,
 		ai.WithRetriever(s.retriever),

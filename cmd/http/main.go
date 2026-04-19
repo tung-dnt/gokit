@@ -23,8 +23,6 @@ import (
 	"restful-boilerplate/pkg/config"
 	router "restful-boilerplate/pkg/http"
 	"restful-boilerplate/pkg/logger"
-	"restful-boilerplate/pkg/metrics"
-	"restful-boilerplate/pkg/otelhttp"
 	"restful-boilerplate/pkg/postgres"
 	pgdb "restful-boilerplate/pkg/postgres/db"
 	"restful-boilerplate/pkg/recovery"
@@ -63,7 +61,7 @@ func run() error {
 	otelPlugin := opentelemetry.New(opentelemetry.Config{
 		ServiceName:    "restful-boilerplate",
 		ForceExport:    true,
-		OTLPEndpoint:   telemetry.Endpoint(),
+		OTLPEndpoint:   telemetry.EndpointHTTP(),
 		OTLPUseHTTP:    true,
 		MetricInterval: 15 * time.Second,
 	})
@@ -80,19 +78,14 @@ func run() error {
 	}
 	defer pool.Close()
 
-	v := cv.New()
-	metric := metrics.New()
-
 	a := &app.App{
 		Queries:   pgdb.New(pool),
-		Validator: v,
+		Validator: cv.New(),
 		Tracer:    otel.GetTracerProvider(),
 		Agent:     ai,
 	}
 
-	r := router.NewRouter()
-	r.Use(metric.Middleware)
-	r.Use(otelhttp.Middleware("restful-boilerplate"))
+	r := router.NewRouter(router.WithInstrumentation("http.server"))
 	r.Use(logger.Middleware)
 	r.Use(recovery.Middleware)
 

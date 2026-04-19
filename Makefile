@@ -37,11 +37,14 @@ migrate: ## Apply PostgreSQL DB migrations
 
 # ─── Build ───────────────────────────────────────────────────────────────────
 
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+LDFLAGS := -X 'restful-boilerplate/pkg/version.Version=$(VERSION)'
+
 ##@ Build
 .PHONY: build/api
 build/api: ## Build HTTP API binary → bin/api
 	@mkdir -p $(BIN_DIR)
-	go build -o $(API_BIN) ./cmd/http
+	go build -ldflags "$(LDFLAGS)" -o $(API_BIN) ./cmd/http
 
 .PHONY: build/frontend
 	@mkdir -p $(BIN_DIR)

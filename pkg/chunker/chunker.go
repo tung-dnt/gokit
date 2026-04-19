@@ -22,7 +22,7 @@ func (c *Chunker) Chunk(text string) []string {
 
 	var segments []string
 	for start := 0; start < len(words); start += c.chunkSize - c.overlap {
-		end := min(start + c.chunkSize, len(words))
+		end := min(start+c.chunkSize, len(words))
 
 		segments = append(segments, strings.Join(words[start:end], " "))
 

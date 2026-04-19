@@ -28,7 +28,7 @@ func (s *userService) createUser(ctx context.Context, in CreateUserRequest) (*pg
 	ctx, span := s.tracer.Start(ctx, "user.userService.createUser")
 	defer span.End()
 
-	logger.FromContext(ctx).Info("creating user", slog.String("email", in.Email))
+	logger.FromContext(ctx).InfoContext(ctx, "creating user", slog.String("email", in.Email))
 
 	id, err := shared.GenerateID()
 	if err != nil {
