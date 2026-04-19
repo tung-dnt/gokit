@@ -1,10 +1,12 @@
 package recipe
 
 import (
+	"errors"
 	"net/http"
 
 	"restful-boilerplate/internal/app"
 	router "restful-boilerplate/pkg/http"
+	"restful-boilerplate/pkg/logger"
 )
 
 // agentAdapter handles HTTP requests for the recipe AI agent domain.
@@ -15,6 +17,24 @@ type agentAdapter struct {
 
 func newAgentAdapter(svc *recipeService, val app.Validator) *agentAdapter {
 	return &agentAdapter{svc: svc, val: val}
+}
+
+// writeErr maps recipe domain errors to HTTP responses, logs once with trace
+// correlation, and never leaks raw error strings to clients.
+func (m *agentAdapter) writeErr(r *http.Request, w http.ResponseWriter, err error) {
+	ctx := r.Context()
+	log := logger.FromContext(ctx)
+	switch {
+	case errors.Is(err, ErrIndexingFailed):
+		log.ErrorContext(ctx, "recipe indexing failed", "error", err)
+		router.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": "indexing failed"})
+	case errors.Is(err, ErrRetrievalFailed):
+		log.ErrorContext(ctx, "recipe retrieval failed", "error", err)
+		router.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": "retrieval failed"})
+	default:
+		log.ErrorContext(ctx, "recipe request failed", "error", err)
+		router.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+	}
 }
 
 // indexRecipeHandler ingests recipe content into the vector store.
@@ -36,7 +56,7 @@ func (m *agentAdapter) indexRecipeHandler(w http.ResponseWriter, r *http.Request
 	}
 	resp, err := m.svc.indexRecipes(r.Context(), req)
 	if err != nil {
-		router.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		m.writeErr(r, w, err)
 		return
 	}
 	router.WriteJSON(w, http.StatusCreated, resp)
@@ -61,7 +81,7 @@ func (m *agentAdapter) queryRecipeHandler(w http.ResponseWriter, r *http.Request
 	}
 	resp, err := m.svc.queryRecipes(r.Context(), req)
 	if err != nil {
-		router.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		m.writeErr(r, w, err)
 		return
 	}
 	router.WriteJSON(w, http.StatusOK, resp)

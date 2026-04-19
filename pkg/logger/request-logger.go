@@ -20,7 +20,7 @@ func Middleware(next http.Handler) http.Handler {
 		if status == 0 {
 			status = http.StatusOK
 		}
-		FromContext(r.Context()).Info("request",
+		FromContext(r.Context()).InfoContext(r.Context(), "request",
 			slog.String("method", r.Method),
 			slog.String("path", r.URL.Path),
 			slog.Int("status", status),

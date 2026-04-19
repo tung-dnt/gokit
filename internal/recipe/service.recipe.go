@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/firebase/genkit/go/ai"
@@ -78,7 +79,7 @@ func (s *recipeService) indexRecipes(ctx context.Context, in IndexRecipeRequest)
 	}
 
 	if err := localvec.Index(ctx, docs, s.docStore); err != nil {
-		return nil, telemetry.SpanErr(span, err, "recipe.recipeService.indexRecipes: index")
+		return nil, telemetry.SpanUnexpectedErr(span, errors.Join(ErrIndexingFailed, err), "recipe.recipeService.indexRecipes")
 	}
 
 	return &indexResponse{
@@ -91,14 +92,14 @@ func (s *recipeService) queryRecipes(ctx context.Context, req QueryRecipeRequest
 	ctx, span := s.tracer.Start(ctx, "recipe.recipeService.queryRecipes")
 	defer span.End()
 
-	logger.FromContext(ctx).InfoContext(ctx, "querying recipes", "question", req.Question)
+	logger.FromContext(ctx).InfoContext(ctx, "querying recipes", slog.String("question", req.Question))
 
 	resp, err := genkit.Retrieve(ctx, s.g,
 		ai.WithRetriever(s.retriever),
 		ai.WithTextDocs(req.Question),
 	)
 	if err != nil {
-		return nil, telemetry.SpanErr(span, err, "recipe.recipeService.queryRecipes: retrieve")
+		return nil, telemetry.SpanUnexpectedErr(span, errors.Join(ErrRetrievalFailed, err), "recipe.recipeService.queryRecipes: retrieve")
 	}
 
 	// Extract text context from retrieved documents.
@@ -123,7 +124,7 @@ func (s *recipeService) queryRecipes(ctx context.Context, req QueryRecipeRequest
 	telemetry.RecordLLMAttrs(llmSpan, llmInfoFromGenkit(modelResp))
 	llmSpan.End()
 	if err != nil {
-		return nil, telemetry.SpanErr(span, err, "recipe.recipeService.queryRecipes: generate")
+		return nil, telemetry.SpanUnexpectedErr(span, err, "recipe.recipeService.queryRecipes: generate")
 	}
 
 	return result, nil

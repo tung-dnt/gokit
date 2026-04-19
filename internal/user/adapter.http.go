@@ -7,6 +7,7 @@ import (
 
 	"restful-boilerplate/internal/app"
 	router "restful-boilerplate/pkg/http"
+	"restful-boilerplate/pkg/logger"
 )
 
 // httpAdapter handles HTTP requests for the user domain.
@@ -20,13 +21,19 @@ func newHTTPAdapter(svc *userService, val app.Validator) *httpAdapter {
 	return &httpAdapter{svc: svc, val: val}
 }
 
-// writeErr writes a 404 for ErrNotFound, otherwise 500.
-func (m *httpAdapter) writeErr(w http.ResponseWriter, err error) {
+// writeErr maps domain errors to HTTP responses and logs unexpected failures
+// exactly once. Expected errors (e.g. ErrNotFound) log at debug; 5xx errors
+// log at error with trace correlation from the request context.
+func (m *httpAdapter) writeErr(r *http.Request, w http.ResponseWriter, err error) {
+	ctx := r.Context()
+	log := logger.FromContext(ctx)
 	if errors.Is(err, ErrNotFound) {
+		log.DebugContext(ctx, "user not found", "error", err)
 		router.WriteJSON(w, http.StatusNotFound, map[string]string{"error": "user not found"})
 		return
 	}
-	router.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	log.ErrorContext(ctx, "user request failed", "error", err)
+	router.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 }
 
 // listUsersHandler returns all users.
@@ -40,7 +47,7 @@ func (m *httpAdapter) writeErr(w http.ResponseWriter, err error) {
 func (m *httpAdapter) listUsersHandler(w http.ResponseWriter, r *http.Request) {
 	users, err := m.svc.listUsers(r.Context())
 	if err != nil {
-		m.writeErr(w, err)
+		m.writeErr(r, w, err)
 		return
 	}
 	resp := make([]userResponse, 0, len(users))
@@ -69,7 +76,7 @@ func (m *httpAdapter) createUserHandler(w http.ResponseWriter, r *http.Request) 
 	}
 	u, err := m.svc.createUser(r.Context(), req)
 	if err != nil {
-		m.writeErr(w, err)
+		m.writeErr(r, w, err)
 		return
 	}
 	router.WriteJSON(w, http.StatusCreated, ToResponse(*u))
@@ -88,7 +95,7 @@ func (m *httpAdapter) createUserHandler(w http.ResponseWriter, r *http.Request) 
 func (m *httpAdapter) getUserByIDHandler(w http.ResponseWriter, r *http.Request) {
 	u, err := m.svc.getUserByID(r.Context(), r.PathValue("id"))
 	if err != nil {
-		m.writeErr(w, err)
+		m.writeErr(r, w, err)
 		return
 	}
 	router.WriteJSON(w, http.StatusOK, ToResponse(*u))
@@ -114,7 +121,7 @@ func (m *httpAdapter) updateUserHandler(w http.ResponseWriter, r *http.Request) 
 	}
 	u, err := m.svc.updateUser(r.Context(), r.PathValue("id"), req)
 	if err != nil {
-		m.writeErr(w, err)
+		m.writeErr(r, w, err)
 		return
 	}
 	router.WriteJSON(w, http.StatusOK, ToResponse(*u))
@@ -132,7 +139,7 @@ func (m *httpAdapter) updateUserHandler(w http.ResponseWriter, r *http.Request) 
 //	@Router       /users/{id} [delete]
 func (m *httpAdapter) deleteUserHandler(w http.ResponseWriter, r *http.Request) {
 	if err := m.svc.deleteUser(r.Context(), r.PathValue("id")); err != nil {
-		m.writeErr(w, err)
+		m.writeErr(r, w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

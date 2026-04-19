@@ -32,7 +32,7 @@ func (s *userService) createUser(ctx context.Context, in CreateUserRequest) (*pg
 
 	id, err := shared.GenerateID()
 	if err != nil {
-		return nil, telemetry.SpanErr(span, err, "generate id")
+		return nil, telemetry.SpanUnexpectedErr(span, err, "user.userService.createUser: generate id")
 	}
 
 	row, err := s.db.CreateUser(ctx, pgdb.CreateUserParams{
@@ -42,7 +42,7 @@ func (s *userService) createUser(ctx context.Context, in CreateUserRequest) (*pg
 		CreatedAt: time.Now(),
 	})
 	if err != nil {
-		return nil, telemetry.SpanErr(span, err, "user.userService.createUser")
+		return nil, telemetry.SpanUnexpectedErr(span, err, "user.userService.createUser")
 	}
 	return &row, nil
 }
@@ -58,9 +58,9 @@ func (s *userService) updateUser(ctx context.Context, id string, in UpdateUserRe
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, ErrNotFound
+			return nil, telemetry.SpanExpectedErr(span, ErrNotFound, "user.userService.updateUser", telemetry.ErrKindNotFound)
 		}
-		return nil, telemetry.SpanErr(span, err, "user.userService.updateUser")
+		return nil, telemetry.SpanUnexpectedErr(span, err, "user.userService.updateUser")
 	}
 	return &row, nil
 }
@@ -71,10 +71,10 @@ func (s *userService) deleteUser(ctx context.Context, id string) error {
 
 	result, err := s.db.DeleteUser(ctx, id)
 	if err != nil {
-		return telemetry.SpanErr(span, err, "user.userService.deleteUser")
+		return telemetry.SpanUnexpectedErr(span, err, "user.userService.deleteUser")
 	}
 	if result.RowsAffected() == 0 {
-		return ErrNotFound
+		return telemetry.SpanExpectedErr(span, ErrNotFound, "user.userService.deleteUser", telemetry.ErrKindNotFound)
 	}
 	return nil
 }
@@ -85,7 +85,7 @@ func (s *userService) listUsers(ctx context.Context) ([]*pgdb.User, error) {
 
 	rows, err := s.db.ListUsers(ctx)
 	if err != nil {
-		return nil, telemetry.SpanErr(span, err, "user.userService.listUsers")
+		return nil, telemetry.SpanUnexpectedErr(span, err, "user.userService.listUsers")
 	}
 
 	users := make([]*pgdb.User, 0, len(rows))
@@ -102,9 +102,9 @@ func (s *userService) getUserByID(ctx context.Context, id string) (*pgdb.User, e
 	row, err := s.db.GetUserByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, ErrNotFound
+			return nil, telemetry.SpanExpectedErr(span, ErrNotFound, "user.userService.getUserByID", telemetry.ErrKindNotFound)
 		}
-		return nil, telemetry.SpanErr(span, err, "user.userService.getUserByID")
+		return nil, telemetry.SpanUnexpectedErr(span, err, "user.userService.getUserByID")
 	}
 	return &row, nil
 }
