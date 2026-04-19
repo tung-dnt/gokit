@@ -103,6 +103,34 @@ PERF_URL ?= http://host.docker.internal:4040
 perf: ## Run k6 performance tests via Docker (BASE_URL=http://... to override)
 	@bash scripts/perf-test.sh $(PERF_URL)
 
+# ─── Docker ──────────────────────────────────────────────────────────────────
+
+##@ Docker
+
+IMAGE ?= restful-boilerplate
+TAG   ?= $(VERSION)
+
+.PHONY: docker/build
+docker/build: ## Build production Docker image → $(IMAGE):$(TAG)
+	docker build -f $(OBS_DIR)/Dockerfile \
+		--build-arg VERSION=$(VERSION) \
+		-t $(IMAGE):$(TAG) \
+		-t $(IMAGE):latest \
+		.
+
+.PHONY: docker/run
+docker/run: ## Run the built image on :4040 (DATABASE_URL=... to override)
+	docker run --rm -p 4040:4040 \
+		-e DATABASE_URL="$${DATABASE_URL:-postgres://postgres:postgres@host.docker.internal:5432/postgres?sslmode=disable}" \
+		-e LOG_FORMAT="$${LOG_FORMAT:-json}" \
+		--name $(IMAGE) \
+		$(IMAGE):$(TAG)
+
+.PHONY: docker/push
+docker/push: ## Push $(IMAGE):$(TAG) (and :latest) to the configured registry
+	docker push $(IMAGE):$(TAG)
+	docker push $(IMAGE):latest
+
 # ─── Observability stack ─────────────────────────────────────────────────────
 
 ##@ Observability
