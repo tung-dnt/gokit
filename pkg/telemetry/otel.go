@@ -14,7 +14,7 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 
-	"restful-boilerplate/pkg/version"
+	"gokit/pkg/version"
 )
 
 // Endpoint returns the OTLP gRPC endpoint (host:port) from

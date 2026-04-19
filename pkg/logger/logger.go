@@ -27,7 +27,7 @@ func Setup(logFormat string, logProvider *sdklog.LoggerProvider) {
 
 	handlers := []slog.Handler{stdoutHandler}
 	if logProvider != nil {
-		handlers = append(handlers, otelslog.NewHandler("restful-boilerplate",
+		handlers = append(handlers, otelslog.NewHandler("gokit",
 			otelslog.WithLoggerProvider(logProvider),
 			otelslog.WithSource(true),
 		))

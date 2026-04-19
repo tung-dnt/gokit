@@ -7,8 +7,8 @@ import (
 	"os"
 	"os/signal"
 
-	"restful-boilerplate/pkg/config"
-	"restful-boilerplate/pkg/postgres"
+	"gokit/pkg/config"
+	"gokit/pkg/postgres"
 )
 
 func main() {

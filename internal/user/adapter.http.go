@@ -6,10 +6,10 @@ import (
 	"errors"
 	"net/http"
 
-	"restful-boilerplate/internal/app"
-	router "restful-boilerplate/pkg/http"
-	"restful-boilerplate/pkg/logger"
-	pgdb "restful-boilerplate/pkg/postgres/db"
+	"gokit/internal/app"
+	router "gokit/pkg/http"
+	"gokit/pkg/logger"
+	pgdb "gokit/pkg/postgres/db"
 )
 
 // userSvc is the service seam consumed by httpAdapter. Concrete *userService

@@ -28,7 +28,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     go build \
         -trimpath \
         -tags=netgo,osusergo \
-        -ldflags="-s -w -X restful-boilerplate/pkg/version.Version=${VERSION}" \
+        -ldflags="-s -w -X gokit/pkg/version.Version=${VERSION}" \
         -o /out/api ./cmd/http
 
 # -----------------------------------------------------------------------------

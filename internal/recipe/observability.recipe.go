@@ -3,7 +3,7 @@ package recipe
 import (
 	"github.com/firebase/genkit/go/ai"
 
-	"restful-boilerplate/pkg/telemetry"
+	"gokit/pkg/telemetry"
 )
 
 // llmInfoFromGenkit maps a Genkit ModelResponse onto the framework-agnostic

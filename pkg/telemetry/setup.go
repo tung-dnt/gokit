@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"restful-boilerplate/pkg/logger"
+	"gokit/pkg/logger"
 )
 
 // SetupAll initialises OpenTelemetry tracing, metrics, and log export.

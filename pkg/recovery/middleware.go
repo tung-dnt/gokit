@@ -10,8 +10,8 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 
-	"restful-boilerplate/pkg/logger"
-	"restful-boilerplate/pkg/telemetry"
+	"gokit/pkg/logger"
+	"gokit/pkg/telemetry"
 )
 
 // Middleware recovers from panics, annotates the active OTel span with the

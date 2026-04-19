@@ -5,7 +5,7 @@ package user
 import (
 	"time"
 
-	pgdb "restful-boilerplate/pkg/postgres/db"
+	pgdb "gokit/pkg/postgres/db"
 )
 
 // userResponse is the HTTP JSON response shape for a user.

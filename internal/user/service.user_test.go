@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/trace/noop"
 
-	pgdb "restful-boilerplate/pkg/postgres/db"
+	pgdb "gokit/pkg/postgres/db"
 )
 
 func newTestService(q pgdb.Querier) *userService {

@@ -15,8 +15,8 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	pgdb "restful-boilerplate/pkg/postgres/db"
-	"restful-boilerplate/pkg/validator"
+	pgdb "gokit/pkg/postgres/db"
+	"gokit/pkg/validator"
 )
 
 func newTestAdapter(svc userSvc) *httpAdapter {

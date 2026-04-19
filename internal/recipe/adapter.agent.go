@@ -4,9 +4,9 @@ import (
 	"errors"
 	"net/http"
 
-	"restful-boilerplate/internal/app"
-	router "restful-boilerplate/pkg/http"
-	"restful-boilerplate/pkg/logger"
+	"gokit/internal/app"
+	router "gokit/pkg/http"
+	"gokit/pkg/logger"
 )
 
 // agentAdapter handles HTTP requests for the recipe AI agent domain.

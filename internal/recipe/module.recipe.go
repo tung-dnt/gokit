@@ -3,8 +3,8 @@ package recipe
 import (
 	"fmt"
 
-	"restful-boilerplate/internal/app"
-	router "restful-boilerplate/pkg/http"
+	"gokit/internal/app"
+	router "gokit/pkg/http"
 )
 
 // Module exposes recipe AI agent endpoints over HTTP.

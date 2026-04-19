@@ -1,4 +1,4 @@
-# restful-boilerplate
+# gokit
 
 A Go RESTful API boilerplate built on **stdlib + SQLite + sqlc** with full observability (OpenTelemetry, Tempo, Loki, Grafana).
 

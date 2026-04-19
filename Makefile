@@ -1,5 +1,5 @@
 # ============================================================
-# restful-boilerplate — local development Makefile
+# gokit — local development Makefile
 # ============================================================
 
 .DEFAULT_GOAL := help
@@ -38,7 +38,7 @@ migrate: ## Apply PostgreSQL DB migrations
 # ─── Build ───────────────────────────────────────────────────────────────────
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
-LDFLAGS := -X 'restful-boilerplate/pkg/version.Version=$(VERSION)'
+LDFLAGS := -X 'gokit/pkg/version.Version=$(VERSION)'
 
 ##@ Build
 .PHONY: build/api
@@ -107,7 +107,7 @@ perf: ## Run k6 performance tests via Docker (BASE_URL=http://... to override)
 
 ##@ Docker
 
-IMAGE ?= restful-boilerplate
+IMAGE ?= gokit
 TAG   ?= $(VERSION)
 
 .PHONY: docker/build

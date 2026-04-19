@@ -6,7 +6,7 @@ import (
 	"github.com/firebase/genkit/go/genkit"
 	"go.opentelemetry.io/otel/trace"
 
-	pgdb "restful-boilerplate/pkg/postgres/db"
+	pgdb "gokit/pkg/postgres/db"
 )
 
 // Validator validates struct fields. It is implemented by pkg/validator.CustomValidator.

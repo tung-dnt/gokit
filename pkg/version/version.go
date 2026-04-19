@@ -5,7 +5,7 @@ package version
 import "runtime/debug"
 
 // Version is the running service version, populated at build time via
-// -ldflags "-X restful-boilerplate/pkg/version.Version=...". Falls back to
+// -ldflags "-X gokit/pkg/version.Version=...". Falls back to
 // runtime build info, then "dev".
 //
 //nolint:gochecknoglobals // populated via -ldflags -X at build time

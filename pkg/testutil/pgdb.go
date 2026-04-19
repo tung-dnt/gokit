@@ -7,7 +7,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"restful-boilerplate/pkg/postgres"
+	"gokit/pkg/postgres"
 )
 
 // SetupPgTestDB opens a PostgreSQL connection pool for integration tests.

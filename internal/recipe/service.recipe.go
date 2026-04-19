@@ -12,9 +12,9 @@ import (
 	"github.com/firebase/genkit/go/plugins/localvec"
 	"go.opentelemetry.io/otel/trace"
 
-	"restful-boilerplate/pkg/chunker"
-	"restful-boilerplate/pkg/logger"
-	"restful-boilerplate/pkg/telemetry"
+	"gokit/pkg/chunker"
+	"gokit/pkg/logger"
+	"gokit/pkg/telemetry"
 )
 
 // queryPromptInput is the typed input for the recipe_query Dotprompt.

@@ -16,18 +16,18 @@ import (
 	opentelemetry "github.com/xavidop/genkit-opentelemetry-go"
 	"go.opentelemetry.io/otel"
 
-	_ "restful-boilerplate/docs"
-	"restful-boilerplate/internal/app"
-	"restful-boilerplate/internal/recipe"
-	"restful-boilerplate/internal/user"
-	"restful-boilerplate/pkg/config"
-	router "restful-boilerplate/pkg/http"
-	"restful-boilerplate/pkg/logger"
-	"restful-boilerplate/pkg/postgres"
-	pgdb "restful-boilerplate/pkg/postgres/db"
-	"restful-boilerplate/pkg/recovery"
-	"restful-boilerplate/pkg/telemetry"
-	cv "restful-boilerplate/pkg/validator"
+	_ "gokit/docs"
+	"gokit/internal/app"
+	"gokit/internal/recipe"
+	"gokit/internal/user"
+	"gokit/pkg/config"
+	router "gokit/pkg/http"
+	"gokit/pkg/logger"
+	"gokit/pkg/postgres"
+	pgdb "gokit/pkg/postgres/db"
+	"gokit/pkg/recovery"
+	"gokit/pkg/telemetry"
+	cv "gokit/pkg/validator"
 )
 
 // @title          Restful Boilerplate API
@@ -59,7 +59,7 @@ func run() error {
 	// Genkit OTEL plugin — exports Genkit-internal spans (LLM calls, embeddings,
 	// retrieval, flows) via OTLP alongside the app's own spans.
 	otelPlugin := opentelemetry.New(opentelemetry.Config{
-		ServiceName:    "restful-boilerplate",
+		ServiceName:    "gokit",
 		ForceExport:    true,
 		OTLPEndpoint:   telemetry.EndpointHTTP(),
 		OTLPUseHTTP:    true,

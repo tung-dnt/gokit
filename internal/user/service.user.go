@@ -9,10 +9,10 @@ import (
 	"github.com/jackc/pgx/v5"
 	"go.opentelemetry.io/otel/trace"
 
-	"restful-boilerplate/pkg/logger"
-	pgdb "restful-boilerplate/pkg/postgres/db"
-	"restful-boilerplate/pkg/telemetry"
-	shared "restful-boilerplate/pkg/util"
+	"gokit/pkg/logger"
+	pgdb "gokit/pkg/postgres/db"
+	"gokit/pkg/telemetry"
+	shared "gokit/pkg/util"
 )
 
 type userService struct {

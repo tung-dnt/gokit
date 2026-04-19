@@ -6,7 +6,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/stretchr/testify/mock"
 
-	pgdb "restful-boilerplate/pkg/postgres/db"
+	pgdb "gokit/pkg/postgres/db"
 )
 
 type mockQuerier struct {

@@ -8,8 +8,8 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
-	"restful-boilerplate/internal/app"
-	"restful-boilerplate/pkg/telemetry"
+	"gokit/internal/app"
+	"gokit/pkg/telemetry"
 )
 
 // WriteJSON encodes v as JSON and writes it to w with the given status code.
